@@ -108,9 +108,9 @@ export function formatStatus(
   const phases = phasesWithStatus(state);
   const data = {
     project: state.config.project,
-    totalTickets: state.totalTicketCount,
-    completeTickets: state.completeTicketCount,
-    openTickets: state.openTicketCount,
+    totalTickets: state.leafTicketCount,
+    completeTickets: state.completeLeafTicketCount,
+    openTickets: state.leafTicketCount - state.completeLeafTicketCount,
     blockedTickets: state.blockedCount,
     openIssues: state.openIssueCount,
     handovers: state.handoverFilenames.length,
@@ -129,7 +129,7 @@ export function formatStatus(
   const lines: string[] = [
     `# ${escapeMarkdownInline(state.config.project)}`,
     "",
-    `Tickets: ${state.completeTicketCount}/${state.totalTicketCount} complete, ${state.blockedCount} blocked`,
+    `Tickets: ${state.completeLeafTicketCount}/${state.leafTicketCount} complete, ${state.blockedCount} blocked`,
     `Issues: ${state.openIssueCount} open`,
     `Handovers: ${state.handoverFilenames.length}`,
     "",
@@ -417,13 +417,17 @@ export function formatError(
 }
 
 export function formatInitResult(
-  result: { root: string; created: readonly string[] },
+  result: { root: string; created: readonly string[]; warnings: readonly string[] },
   format: OutputFormat,
 ): string {
   if (format === "json") {
     return JSON.stringify(successEnvelope(result), null, 2);
   }
-  return [`Initialized .story/ at ${escapeMarkdownInline(result.root)}`, "", ...result.created.map((f) => `  ${f}`)].join("\n");
+  const lines = [`Initialized .story/ at ${escapeMarkdownInline(result.root)}`, "", ...result.created.map((f) => `  ${f}`)];
+  if (result.warnings.length > 0) {
+    lines.push("", `Warning: ${result.warnings.length} corrupt file(s) found. Run \`claudestory validate\` to inspect.`);
+  }
+  return lines.join("\n");
 }
 
 export function formatHandoverList(

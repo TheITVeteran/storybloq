@@ -17,8 +17,13 @@ import {
 // Version injected at build time by tsup define
 const version = process.env.CLAUDESTORY_VERSION ?? "0.0.0-dev";
 
-// Sentinel for errors already handled by .fail()
-const HANDLED_ERROR = Symbol("HANDLED_ERROR");
+// Error class for errors already handled by .fail()
+class HandledError extends Error {
+  constructor() {
+    super("HANDLED_ERROR");
+    this.name = "HandledError";
+  }
+}
 
 // Sniff --format from raw argv for error formatting before yargs parses
 const rawArgs = hideBin(process.argv);
@@ -43,7 +48,7 @@ let cli = yargs(rawArgs)
     // Yargs validation error (missing args, unknown command)
     writeOutput(formatError("invalid_input", msg ?? "Unknown error", errorFormat));
     process.exitCode = ExitCode.USER_ERROR;
-    throw HANDLED_ERROR;
+    throw new HandledError();
   });
 
 cli = registerInitCommand(cli);
@@ -55,10 +60,20 @@ cli = registerHandoverCommand(cli);
 cli = registerBlockerCommand(cli);
 cli = registerValidateCommand(cli);
 
-// Top-level catch: ignore handled errors, catch unexpected ones
-await cli.parseAsync().catch((err: unknown) => {
-  if (err === HANDLED_ERROR) return;
+// Top-level error handling: both sync try-catch and async .catch() are needed.
+// yargs' parseAsync() calls parse() synchronously — if .fail() throws during
+// validation (missing args, unknown commands), it escapes as a synchronous throw
+// before a promise exists. The outer try-catch catches that. The .catch() handles
+// rejections from async command handlers.
+function handleUnexpectedError(err: unknown): void {
+  if (err instanceof HandledError) return;
   const message = err instanceof Error ? err.message : String(err);
   writeOutput(formatError("io_error", message, errorFormat));
   process.exitCode = ExitCode.USER_ERROR;
-});
+}
+
+try {
+  await cli.parseAsync().catch(handleUnexpectedError);
+} catch (err: unknown) {
+  handleUnexpectedError(err);
+}

@@ -146,6 +146,42 @@ describe("formatStatus", () => {
     expect(md).toContain("Tickets:");
     expect(md).toContain("Phases");
   });
+
+  it("counts exclude umbrellas (leaf-only)", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", status: "complete" }), // umbrella
+        makeTicket({ id: "T-002", phase: "p1", status: "complete", parentTicket: "T-001" }),
+        makeTicket({ id: "T-003", phase: "p1", status: "open", parentTicket: "T-001" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const json = formatStatus(state, "json");
+    const parsed = JSON.parse(json);
+    // 2 leaf tickets (T-002 complete, T-003 open), umbrella T-001 excluded
+    expect(parsed.data.totalTickets).toBe(2);
+    expect(parsed.data.completeTickets).toBe(1);
+    expect(parsed.data.openTickets).toBe(1);
+    const md = formatStatus(state, "md");
+    expect(md).toContain("1/2 complete");
+  });
+
+  it("handles deeply nested umbrellas", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1" }), // top umbrella
+        makeTicket({ id: "T-002", phase: "p1", parentTicket: "T-001" }), // mid umbrella
+        makeTicket({ id: "T-003", phase: "p1", status: "complete", parentTicket: "T-002" }), // leaf
+        makeTicket({ id: "T-004", phase: "p1", status: "open", parentTicket: "T-002" }), // leaf
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const json = formatStatus(state, "json");
+    const parsed = JSON.parse(json);
+    // 2 leaf tickets, umbrellas T-001 and T-002 excluded
+    expect(parsed.data.totalTickets).toBe(2);
+    expect(parsed.data.completeTickets).toBe(1);
+  });
 });
 
 describe("formatPhaseList", () => {
@@ -268,13 +304,30 @@ describe("formatValidation", () => {
 
 describe("formatInitResult", () => {
   it("JSON is valid", () => {
-    const json = formatInitResult({ root: "/tmp/test", created: [".story/config.json"] }, "json");
+    const json = formatInitResult({ root: "/tmp/test", created: [".story/config.json"], warnings: [] }, "json");
     expect(() => JSON.parse(json)).not.toThrow();
   });
 
   it("MD shows created files", () => {
-    const md = formatInitResult({ root: "/tmp/test", created: [".story/config.json"] }, "md");
+    const md = formatInitResult({ root: "/tmp/test", created: [".story/config.json"], warnings: [] }, "md");
     expect(md).toContain("config.json");
+  });
+
+  it("MD shows warning when corrupt files found", () => {
+    const md = formatInitResult({ root: "/tmp/test", created: [".story/config.json"], warnings: [".story/tickets/T-099.json"] }, "md");
+    expect(md).toContain("1 corrupt file(s) found");
+    expect(md).toContain("claudestory validate");
+  });
+
+  it("JSON includes warnings array", () => {
+    const json = formatInitResult({ root: "/tmp/test", created: [".story/config.json"], warnings: [".story/tickets/T-099.json"] }, "json");
+    const parsed = JSON.parse(json);
+    expect(parsed.data.warnings).toEqual([".story/tickets/T-099.json"]);
+  });
+
+  it("MD omits warning line when no corrupt files", () => {
+    const md = formatInitResult({ root: "/tmp/test", created: [".story/config.json"], warnings: [] }, "md");
+    expect(md).not.toContain("corrupt");
   });
 });
 

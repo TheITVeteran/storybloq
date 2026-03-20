@@ -48,7 +48,8 @@ export async function listHandovers(
     }
   }
 
-  // Newest first (reverse lexicographic — YYYY-MM-DD sorts correctly)
+  // Newest first (reverse lexicographic — YYYY-MM-DD sorts correctly).
+  // For same-date handovers, alphabetically last suffix wins (stable, portable).
   conforming.sort((a, b) => b.localeCompare(a));
 
   return [...conforming, ...nonConforming];

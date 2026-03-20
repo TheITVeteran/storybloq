@@ -21,6 +21,8 @@ export class ProjectState {
   // --- Derived (public readonly) ---
   readonly umbrellaIDs: ReadonlySet<string>;
   readonly leafTickets: readonly Ticket[];
+  readonly leafTicketCount: number;
+  readonly completeLeafTicketCount: number;
 
   // --- Derived (private) ---
   private readonly leafTicketsByPhase: Map<string | null, Ticket[]>;
@@ -60,6 +62,10 @@ export class ProjectState {
 
     // Step 2: Leaf tickets — not umbrellas
     this.leafTickets = input.tickets.filter((t) => !parentIDs.has(t.id));
+    this.leafTicketCount = this.leafTickets.length;
+    this.completeLeafTicketCount = this.leafTickets.filter(
+      (t) => t.status === "complete",
+    ).length;
 
     // Step 3: Leaf tickets by phase, sorted by order
     const byPhase = new Map<string | null, Ticket[]>();
@@ -188,7 +194,7 @@ export class ProjectState {
   }
 
   get blockedCount(): number {
-    return this.tickets.filter((t) => this.isBlocked(t)).length;
+    return this.leafTickets.filter((t) => t.status !== "complete" && this.isBlocked(t)).length;
   }
 
   ticketByID(id: string): Ticket | undefined {

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initProject } from "../../../src/core/init.js";
@@ -57,5 +57,42 @@ describe("init command logic", () => {
     await initProject(dir, { name: "first" });
     const result = await initProject(dir, { name: "second", force: true });
     expect(result.created).toContain(".story/config.json");
+  });
+
+  it("warns about corrupt JSON files on --force", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "init-test-"));
+    tmpDirs.push(dir);
+    await initProject(dir, { name: "first" });
+    // Write a corrupt JSON file into tickets/
+    await writeFile(join(dir, ".story", "tickets", "T-099.json"), "{bad json");
+    const result = await initProject(dir, { name: "second", force: true });
+    expect(result.warnings.length).toBe(1);
+    expect(result.warnings[0]).toContain("T-099.json");
+  });
+
+  it("warns about schema-invalid files on --force", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "init-test-"));
+    tmpDirs.push(dir);
+    await initProject(dir, { name: "first" });
+    // Write valid JSON but schema-invalid ticket (missing required fields)
+    await writeFile(join(dir, ".story", "tickets", "T-001.json"), '{"id":"T-001","title":"test"}');
+    const result = await initProject(dir, { name: "second", force: true });
+    expect(result.warnings.length).toBe(1);
+    expect(result.warnings[0]).toContain("T-001.json");
+  });
+
+  it("returns empty warnings on --force with no corrupt files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "init-test-"));
+    tmpDirs.push(dir);
+    await initProject(dir, { name: "first" });
+    const result = await initProject(dir, { name: "second", force: true });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("returns empty warnings on fresh init", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "init-test-"));
+    tmpDirs.push(dir);
+    const result = await initProject(dir, { name: "test" });
+    expect(result.warnings).toEqual([]);
   });
 });

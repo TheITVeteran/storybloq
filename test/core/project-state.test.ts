@@ -333,6 +333,27 @@ describe("ProjectState", () => {
       const state = makeState({ tickets });
       expect(state.blockedCount).toBe(2);
     });
+
+    it("excludes umbrella tickets from blocked count", () => {
+      const tickets = [
+        makeTicket({ id: "T-001", status: "open" }),
+        makeTicket({ id: "T-002", blockedBy: ["T-001"] }), // umbrella (T-003 references it)
+        makeTicket({ id: "T-003", parentTicket: "T-002", blockedBy: ["T-001"] }), // leaf, blocked
+      ];
+      const state = makeState({ tickets });
+      // T-002 is umbrella, should NOT be counted; T-003 is leaf + blocked
+      expect(state.blockedCount).toBe(1);
+    });
+
+    it("excludes complete tickets from blocked count", () => {
+      const tickets = [
+        makeTicket({ id: "T-001", status: "open" }),
+        makeTicket({ id: "T-002", status: "complete", blockedBy: ["T-001"] }),
+      ];
+      const state = makeState({ tickets });
+      // T-002 is complete, should NOT be counted even though it has blockedBy
+      expect(state.blockedCount).toBe(0);
+    });
   });
 
   describe("counts", () => {
@@ -346,6 +367,21 @@ describe("ProjectState", () => {
       expect(state.totalTicketCount).toBe(3);
       expect(state.completeTicketCount).toBe(1);
       expect(state.openTicketCount).toBe(2); // open + inprogress
+    });
+
+    it("leaf counts exclude umbrellas", () => {
+      const tickets = [
+        makeTicket({ id: "T-001", status: "complete" }), // umbrella (T-002 references it)
+        makeTicket({ id: "T-002", status: "complete", parentTicket: "T-001" }),
+        makeTicket({ id: "T-003", status: "open", parentTicket: "T-001" }),
+      ];
+      const state = makeState({ tickets });
+      // All tickets count includes umbrella
+      expect(state.totalTicketCount).toBe(3);
+      expect(state.completeTicketCount).toBe(2);
+      // Leaf counts exclude umbrella T-001
+      expect(state.leafTicketCount).toBe(2);
+      expect(state.completeLeafTicketCount).toBe(1);
     });
 
     it("openTicketCount includes inprogress", () => {

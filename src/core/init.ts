@@ -1,7 +1,7 @@
 import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { writeConfig, writeRoadmap } from "./project-loader.js";
-import { ProjectLoaderError, CURRENT_SCHEMA_VERSION } from "./errors.js";
+import { writeConfig, writeRoadmap, loadProject } from "./project-loader.js";
+import { ProjectLoaderError, CURRENT_SCHEMA_VERSION, INTEGRITY_WARNING_TYPES } from "./errors.js";
 import type { Config } from "../models/config.js";
 import type { Roadmap } from "../models/roadmap.js";
 
@@ -15,6 +15,7 @@ export interface InitOptions {
 export interface InitResult {
   readonly root: string;
   readonly created: readonly string[];
+  readonly warnings: readonly string[];
 }
 
 /**
@@ -91,6 +92,25 @@ export async function initProject(
   await writeConfig(config, absRoot);
   await writeRoadmap(roadmap, absRoot);
 
+  // Validate existing data files when force-reinitializing.
+  // Uses loadProject (permissive) — catches both JSON parse errors AND Zod schema
+  // violations, matching exactly what strict mode will reject on future writes.
+  const warnings: string[] = [];
+  if (options.force && exists) {
+    try {
+      const { warnings: loadWarnings } = await loadProject(absRoot);
+      for (const w of loadWarnings) {
+        if ((INTEGRITY_WARNING_TYPES as readonly string[]).includes(w.type)) {
+          warnings.push(`${w.file}: ${w.message}`);
+        }
+      }
+    } catch {
+      // loadProject may throw on critical file errors (config/roadmap) —
+      // we just wrote those, so this shouldn't happen, but don't let
+      // validation failures block init.
+    }
+  }
+
   return {
     root: absRoot,
     created: [
@@ -100,5 +120,6 @@ export async function initProject(
       ".story/issues/",
       ".story/handovers/",
     ],
+    warnings,
   };
 }
