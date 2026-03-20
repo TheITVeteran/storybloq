@@ -1,0 +1,13 @@
+{
+  "id": "ISS-001",
+  "title": "Build fails on Node 18",
+  "status": "resolved",
+  "severity": "high",
+  "components": ["build"],
+  "impact": "CI pipeline fails on Node 18 runners.",
+  "resolution": "Updated engines field to require Node 20+.",
+  "location": ["package.json:5"],
+  "discoveredDate": "2026-01-02",
+  "resolvedDate": "2026-01-03",
+  "relatedTickets": ["T-001"]
+}

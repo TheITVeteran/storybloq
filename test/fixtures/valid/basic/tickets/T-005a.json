@@ -1,0 +1,12 @@
+{
+  "id": "T-005a",
+  "title": "Clean up build scripts",
+  "description": "Remove unused build scripts and update package.json.",
+  "type": "chore",
+  "status": "open",
+  "phase": "alpha",
+  "order": 50,
+  "createdDate": "2026-01-05",
+  "completedDate": null,
+  "blockedBy": ["T-001"]
+}

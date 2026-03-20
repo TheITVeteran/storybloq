@@ -1,0 +1,15 @@
+{
+  "id": "ISS-002",
+  "title": "Flaky test in parser module",
+  "status": "open",
+  "severity": "low",
+  "components": ["tests"],
+  "impact": "One test fails intermittently due to timing.",
+  "resolution": null,
+  "location": ["test/parser.test.ts:42"],
+  "discoveredDate": "2026-01-10",
+  "resolvedDate": null,
+  "relatedTickets": [],
+  "order": 10,
+  "phase": "alpha"
+}

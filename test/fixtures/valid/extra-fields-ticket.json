@@ -1,0 +1,15 @@
+{
+  "id": "T-099",
+  "title": "Ticket with extra fields",
+  "description": "This ticket has unknown extra keys for passthrough testing.",
+  "type": "task",
+  "status": "open",
+  "phase": "alpha",
+  "order": 99,
+  "createdDate": "2026-01-15",
+  "completedDate": null,
+  "blockedBy": [],
+  "customField": "should be preserved",
+  "anotherExtra": 42,
+  "nestedExtra": { "key": "value" }
+}

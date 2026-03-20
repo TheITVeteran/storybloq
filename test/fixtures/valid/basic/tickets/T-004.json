@@ -1,0 +1,13 @@
+{
+  "id": "T-004",
+  "title": "Add status command",
+  "description": "Implement the claudestory status command.",
+  "type": "task",
+  "status": "open",
+  "phase": "p5b",
+  "order": 40,
+  "createdDate": "2026-01-04",
+  "completedDate": null,
+  "blockedBy": [],
+  "parentTicket": "T-003"
+}

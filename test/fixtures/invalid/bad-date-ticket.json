@@ -1,0 +1,12 @@
+{
+  "id": "T-101",
+  "title": "Ticket with impossible date",
+  "description": "The created date is not a valid calendar date.",
+  "type": "task",
+  "status": "open",
+  "phase": "alpha",
+  "order": 10,
+  "createdDate": "2026-13-40",
+  "completedDate": null,
+  "blockedBy": []
+}

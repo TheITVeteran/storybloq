@@ -1,0 +1,36 @@
+{
+  "title": "test-project",
+  "date": "2026-01-15",
+  "phases": [
+    {
+      "id": "alpha",
+      "label": "ALPHA",
+      "name": "Alpha Phase",
+      "description": "Initial development phase."
+    },
+    {
+      "id": "p5b",
+      "label": "PHASE 5B",
+      "name": "CLI + MCP",
+      "description": "CLI and MCP server phase."
+    }
+  ],
+  "blockers": [
+    {
+      "name": "npm name reserved",
+      "cleared": true,
+      "note": "Reserved on 2026-01-01."
+    },
+    {
+      "name": "API key provisioned",
+      "createdDate": "2026-01-10",
+      "clearedDate": "2026-01-12",
+      "note": "Key provisioned and rotated."
+    },
+    {
+      "name": "Waiting on legal review",
+      "createdDate": "2026-01-14",
+      "clearedDate": null
+    }
+  ]
+}

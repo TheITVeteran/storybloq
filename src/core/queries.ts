@@ -1,0 +1,215 @@
+import type { Ticket } from "../models/ticket.js";
+import type { Phase, Blocker } from "../models/roadmap.js";
+import type { ProjectState, PhaseStatus } from "./project-state.js";
+
+// --- Result Types ---
+
+export interface UmbrellaProgress {
+  readonly total: number;
+  readonly complete: number;
+  readonly status: PhaseStatus;
+}
+
+export interface UnblockImpact {
+  readonly ticketId: string;
+  readonly wouldUnblock: readonly Ticket[];
+}
+
+export interface NextTicketResult {
+  readonly kind: "found";
+  readonly ticket: Ticket;
+  readonly unblockImpact: UnblockImpact;
+  readonly umbrellaProgress: UmbrellaProgress | null;
+}
+
+export interface NextTicketAllComplete {
+  readonly kind: "all_complete";
+}
+
+export interface NextTicketAllBlocked {
+  readonly kind: "all_blocked";
+  readonly phaseId: string;
+  readonly blockedCount: number;
+}
+
+export interface NextTicketEmpty {
+  readonly kind: "empty_project";
+}
+
+export type NextTicketOutcome =
+  | NextTicketResult
+  | NextTicketAllComplete
+  | NextTicketAllBlocked
+  | NextTicketEmpty;
+
+export interface PhaseWithStatus {
+  readonly phase: Phase;
+  readonly status: PhaseStatus;
+  readonly leafCount: number;
+}
+
+// --- Query Functions ---
+
+/**
+ * First non-complete, unblocked leaf ticket in the first non-complete phase
+ * (roadmap order). Skips phases with zero leaf tickets.
+ * Returns discriminated outcome for exhaustive handling.
+ */
+export function nextTicket(state: ProjectState): NextTicketOutcome {
+  const phases = state.roadmap.phases;
+  if (phases.length === 0 || state.leafTickets.length === 0) {
+    return { kind: "empty_project" };
+  }
+
+  let allPhasesComplete = true;
+
+  for (const phase of phases) {
+    const leaves = state.phaseTickets(phase.id);
+    if (leaves.length === 0) continue; // skip empty/umbrella-only phases
+
+    const status = state.phaseStatus(phase.id);
+    if (status === "complete") continue;
+
+    allPhasesComplete = false;
+
+    // Find first non-complete, unblocked leaf
+    const incompleteLeaves = leaves.filter((t) => t.status !== "complete");
+    const candidate = incompleteLeaves.find((t) => !state.isBlocked(t));
+
+    if (candidate) {
+      const impact = ticketsUnblockedBy(candidate.id, state);
+      const progress = candidate.parentTicket
+        ? umbrellaProgress(candidate.parentTicket, state)
+        : null;
+      return {
+        kind: "found",
+        ticket: candidate,
+        unblockImpact: { ticketId: candidate.id, wouldUnblock: impact },
+        umbrellaProgress: progress,
+      };
+    }
+
+    // Phase has incomplete leaves but all are blocked
+    return {
+      kind: "all_blocked",
+      phaseId: phase.id,
+      blockedCount: incompleteLeaves.length,
+    };
+  }
+
+  if (allPhasesComplete) {
+    return { kind: "all_complete" };
+  }
+
+  // All phases had zero leaves (shouldn't happen if leafTickets.length > 0)
+  return { kind: "empty_project" };
+}
+
+/**
+ * All currently blocked incomplete leaf tickets.
+ */
+export function blockedTickets(state: ProjectState): readonly Ticket[] {
+  return state.leafTickets.filter(
+    (t) => t.status !== "complete" && state.isBlocked(t),
+  );
+}
+
+/**
+ * Tickets that would become unblocked if ticketId were completed.
+ * Direct unblocking only — no transitive chains.
+ */
+export function ticketsUnblockedBy(
+  ticketId: string,
+  state: ProjectState,
+): readonly Ticket[] {
+  const blocked = state.reverseBlocks(ticketId);
+  return blocked.filter((t) => {
+    if (t.status === "complete") return false;
+    // Check if ALL other blockers (excluding ticketId) are complete
+    return t.blockedBy.every((bid) => {
+      if (bid === ticketId) return true; // skip the ticket we're simulating as complete
+      const blocker = state.ticketByID(bid);
+      if (!blocker) return false; // unknown = still blocked
+      return blocker.status === "complete";
+    });
+  });
+}
+
+/**
+ * Progress of an umbrella's descendant leaves.
+ * Returns null if ticketId is not an umbrella.
+ */
+export function umbrellaProgress(
+  ticketId: string,
+  state: ProjectState,
+): UmbrellaProgress | null {
+  if (!state.umbrellaIDs.has(ticketId)) return null;
+  const leaves = collectDescendantLeaves(ticketId, state, new Set());
+  const complete = leaves.filter((t) => t.status === "complete").length;
+  return {
+    total: leaves.length,
+    complete,
+    status: state.umbrellaStatus(ticketId),
+  };
+}
+
+/**
+ * First phase in roadmap order that is not complete and has leaf tickets.
+ */
+export function currentPhase(state: ProjectState): Phase | null {
+  for (const phase of state.roadmap.phases) {
+    const leaves = state.phaseTickets(phase.id);
+    if (leaves.length === 0) continue;
+    if (state.phaseStatus(phase.id) !== "complete") return phase;
+  }
+  return null;
+}
+
+/**
+ * All roadmap phases with their derived status and leaf count.
+ */
+export function phasesWithStatus(
+  state: ProjectState,
+): readonly PhaseWithStatus[] {
+  return state.roadmap.phases.map((phase) => ({
+    phase,
+    status: state.phaseStatus(phase.id),
+    leafCount: state.phaseTickets(phase.id).length,
+  }));
+}
+
+/**
+ * Normalizes blocker cleared state across legacy and new formats.
+ * Legacy: cleared boolean. New: clearedDate non-null.
+ */
+export function isBlockerCleared(blocker: Blocker): boolean {
+  if (blocker.cleared === true) return true;
+  if (blocker.clearedDate != null) return true;
+  return false;
+}
+
+// --- Private Helpers ---
+
+/**
+ * Collects descendant leaf tickets of an umbrella using public API only.
+ * Mirrors ProjectState.descendantLeaves but without accessing private methods.
+ */
+function collectDescendantLeaves(
+  ticketId: string,
+  state: ProjectState,
+  visited: Set<string>,
+): Ticket[] {
+  if (visited.has(ticketId)) return [];
+  visited.add(ticketId);
+
+  const children = state.umbrellaChildren(ticketId);
+  const leaves: Ticket[] = [];
+  for (const child of children) {
+    if (state.umbrellaIDs.has(child.id)) {
+      leaves.push(...collectDescendantLeaves(child.id, state, visited));
+    } else {
+      leaves.push(child);
+    }
+  }
+  return leaves;
+}

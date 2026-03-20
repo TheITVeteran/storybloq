@@ -1,0 +1,12 @@
+{
+  "id": "T-100",
+  "title": "Ticket with bad status",
+  "description": "Status value is not in the enum.",
+  "type": "task",
+  "status": "deleted",
+  "phase": "alpha",
+  "order": 10,
+  "createdDate": "2026-01-01",
+  "completedDate": null,
+  "blockedBy": []
+}

@@ -1,0 +1,13 @@
+{
+  "id": "ISS-100",
+  "title": "Issue with bad severity",
+  "status": "open",
+  "severity": "extreme",
+  "components": ["core"],
+  "impact": "Bad severity value.",
+  "resolution": null,
+  "location": ["file.ts:1"],
+  "discoveredDate": "2026-01-01",
+  "resolvedDate": null,
+  "relatedTickets": []
+}

@@ -1,0 +1,11 @@
+{
+  "title": "Ticket without ID",
+  "description": "This ticket is missing the required id field.",
+  "type": "task",
+  "status": "open",
+  "phase": "alpha",
+  "order": 10,
+  "createdDate": "2026-01-01",
+  "completedDate": null,
+  "blockedBy": []
+}
