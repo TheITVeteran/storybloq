@@ -125,17 +125,38 @@ Set `CLAUDESTORY_PROJECT_ROOT` to your project root (the directory containing `.
 | `claudestory_handover_get` | Specific handover |
 | `claudestory_blocker_list` | List blockers |
 | `claudestory_validate` | Integrity checks |
+| `claudestory_recap` | Session diff + suggested actions |
+| `claudestory_snapshot` | Save state for session diffs |
+| `claudestory_export` | Self-contained project document |
 
-## Session Priming
+## Session Lifecycle
 
-Add a Claude Code hook to auto-inject project state at session start:
+### Session Start (recommended hook)
+
+Auto-inject project recap at session start — shows what changed since last snapshot and what to work on next:
 
 ```bash
 #!/bin/bash
-claudestory status --format md 2>/dev/null
+claudestory recap --format md 2>/dev/null
 ```
 
-This gives the AI full project context from the first message.
+### Session End
+
+Save a snapshot before ending your session so the next `recap` can show diffs:
+
+```bash
+claudestory snapshot
+```
+
+### Export
+
+Generate a self-contained document for sharing:
+
+```bash
+claudestory export --phase p5b          # single phase
+claudestory export --all                # entire project
+claudestory export --all --format json  # structured JSON
+```
 
 ## Library Usage
 
