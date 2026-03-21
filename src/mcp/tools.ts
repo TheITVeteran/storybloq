@@ -45,6 +45,7 @@ import {
 import { handleRecap } from "../cli/commands/recap.js";
 import { handleSnapshot } from "../cli/commands/snapshot.js";
 import { handleExport } from "../cli/commands/export.js";
+import { handleHandoverCreate } from "../cli/commands/handover.js";
 import {
   handlePhaseList,
   handlePhaseCurrent,
@@ -302,5 +303,23 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     const mode = args.all ? "all" : "phase";
     const phaseId = args.phase ?? null;
     return runMcpReadTool(pinnedRoot, (ctx) => handleExport(ctx, mode as "all" | "phase", phaseId));
+  });
+
+  server.registerTool("claudestory_handover_create", {
+    description: "Create a handover document from markdown content",
+    inputSchema: {
+      content: z.string().describe("Markdown content of the handover"),
+      slug: z.string().optional().describe("Slug for filename (e.g. phase5b-wrapup). Default: session"),
+    },
+  }, (args) => {
+    if (!args.content?.trim()) {
+      return Promise.resolve({
+        content: [{ type: "text" as const, text: formatMcpError("invalid_input", "Handover content is empty") }],
+        isError: true,
+      });
+    }
+    return runMcpWriteTool(pinnedRoot, (root) =>
+      handleHandoverCreate(args.content, args.slug ?? "session", "md", root),
+    );
   });
 }

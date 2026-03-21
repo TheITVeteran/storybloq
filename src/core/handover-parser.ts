@@ -4,6 +4,7 @@ import { join, relative, extname } from "node:path";
 import type { LoadWarning } from "./errors.js";
 
 const HANDOVER_DATE_REGEX = /^\d{4}-\d{2}-\d{2}/;
+const HANDOVER_SEQ_REGEX = /^(\d{4}-\d{2}-\d{2})-(\d{2})-/;
 
 /**
  * Lists handover markdown files, sorted by date (newest first).
@@ -48,9 +49,24 @@ export async function listHandovers(
     }
   }
 
-  // Newest first (reverse lexicographic — YYYY-MM-DD sorts correctly).
-  // For same-date handovers, alphabetically last suffix wins (stable, portable).
-  conforming.sort((a, b) => b.localeCompare(a));
+  // Newest first. For same-date entries, sequenced files (YYYY-MM-DD-NN-*)
+  // from `handover create` sort before non-sequenced legacy files.
+  // Contract: `handover create` is the supported creation path. Manual file
+  // creation with non-sequenced names on the same day as sequenced files is
+  // unsupported and may produce incorrect ordering.
+  conforming.sort((a, b) => {
+    const dateA = a.slice(0, 10);
+    const dateB = b.slice(0, 10);
+    if (dateA !== dateB) return dateB.localeCompare(dateA); // newest date first
+
+    // Same date — sequenced files sort before non-sequenced
+    const seqA = a.match(HANDOVER_SEQ_REGEX);
+    const seqB = b.match(HANDOVER_SEQ_REGEX);
+    if (seqA && !seqB) return -1; // a is sequenced, b is not → a first
+    if (!seqA && seqB) return 1;  // b is sequenced, a is not → b first
+    // Both sequenced or both non-sequenced — reverse lex
+    return b.localeCompare(a);
+  });
 
   return [...conforming, ...nonConforming];
 }

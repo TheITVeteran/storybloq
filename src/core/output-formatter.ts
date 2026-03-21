@@ -453,6 +453,16 @@ export function formatHandoverContent(
   return content;
 }
 
+export function formatHandoverCreateResult(
+  filename: string,
+  format: OutputFormat,
+): string {
+  if (format === "json") {
+    return JSON.stringify(successEnvelope({ filename }), null, 2);
+  }
+  return `Created handover: ${filename}`;
+}
+
 // --- Snapshot / Recap / Export ---
 
 import type { RecapResult, SnapshotDiff } from "./snapshot.js";

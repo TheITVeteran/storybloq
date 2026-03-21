@@ -25,6 +25,7 @@ import {
   handleHandoverList,
   handleHandoverLatest,
   handleHandoverGet,
+  handleHandoverCreate,
 } from "./commands/handover.js";
 import { handleBlockerList, handleBlockerAdd, handleBlockerClear } from "./commands/blocker.js";
 import {
@@ -140,7 +141,94 @@ export function registerHandoverCommand(yargs: Argv): Argv {
             );
           },
         )
-        .demandCommand(1, "Specify a handover subcommand: list, latest, get")
+        .command(
+          "create",
+          "Create a new handover document",
+          (y2) =>
+            addFormatOption(
+              y2
+                .option("content", {
+                  type: "string",
+                  describe: "Handover content (markdown string)",
+                })
+                .option("stdin", {
+                  type: "boolean",
+                  describe: "Read content from stdin",
+                })
+                .option("slug", {
+                  type: "string",
+                  default: "session",
+                  describe: "Slug for filename (e.g. phase5b-wrapup)",
+                })
+                .conflicts("content", "stdin")
+                .check((argv) => {
+                  if (!argv.content && !argv.stdin) {
+                    throw new Error(
+                      "Specify either --content or --stdin",
+                    );
+                  }
+                  return true;
+                }),
+            ),
+          async (argv) => {
+            const format = parseOutputFormat(argv.format);
+            const root = (
+              await import("../core/project-root-discovery.js")
+            ).discoverProjectRoot();
+            if (!root) {
+              writeOutput(
+                formatError("not_found", "No .story/ project found.", format),
+              );
+              process.exitCode = ExitCode.USER_ERROR;
+              return;
+            }
+
+            let content: string;
+            if (argv.stdin) {
+              if (process.stdin.isTTY) {
+                writeOutput(
+                  formatError("invalid_input", "Cannot read from stdin: no pipe detected. Use --content instead.", format),
+                );
+                process.exitCode = ExitCode.USER_ERROR;
+                return;
+              }
+              const chunks: Buffer[] = [];
+              for await (const chunk of process.stdin) {
+                chunks.push(chunk as Buffer);
+              }
+              content = Buffer.concat(chunks).toString("utf-8");
+            } else {
+              content = argv.content as string;
+            }
+
+            try {
+              const result = await handleHandoverCreate(
+                content,
+                argv.slug as string,
+                format,
+                root,
+              );
+              writeOutput(result.output);
+              process.exitCode = result.exitCode ?? ExitCode.OK;
+            } catch (err: unknown) {
+              if (err instanceof CliValidationError) {
+                writeOutput(formatError(err.code, err.message, format));
+                process.exitCode = ExitCode.USER_ERROR;
+                return;
+              }
+              const { ProjectLoaderError } = await import("../core/errors.js");
+              if (err instanceof ProjectLoaderError) {
+                writeOutput(formatError(err.code, err.message, format));
+                process.exitCode = ExitCode.USER_ERROR;
+                return;
+              }
+              const message = err instanceof Error ? err.message : String(err);
+              writeOutput(formatError("io_error", message, format));
+              process.exitCode = ExitCode.USER_ERROR;
+            }
+          },
+        )
+        .demandCommand(1, "Specify a handover subcommand: list, latest, get, create")
         .strict(),
     () => {},
   );

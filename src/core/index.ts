@@ -100,6 +100,7 @@ export {
   formatInitResult,
   formatHandoverList,
   formatHandoverContent,
+  formatHandoverCreateResult,
   formatSnapshotResult,
   formatRecap,
   formatExport,
