@@ -90,21 +90,21 @@ All commands support `--format json|md` (default: `md`).
 
 ## MCP Server
 
-The MCP server provides 15 read-only tools for Claude Code integration. It imports the same TypeScript modules as the CLI directly — no subprocess spawning.
+The MCP server provides 19 tools for Claude Code integration. It imports the same TypeScript modules as the CLI directly — no subprocess spawning.
 
 ### Setup with Claude Code
 
 ```bash
-claude mcp add claudestory -- env CLAUDESTORY_PROJECT_ROOT=/path/to/your/project node /path/to/claudestory/dist/mcp.js
+claude mcp add claudestory -- npx -y @anthropologies/claudestory --mcp
 ```
 
-Or if installed globally:
+That's it. No global install required. Claude Code will spawn the MCP server automatically.
+
+For a specific project root (recommended when working across multiple projects):
 
 ```bash
-claude mcp add claudestory -- env CLAUDESTORY_PROJECT_ROOT=/path/to/your/project claudestory-mcp
+claude mcp add claudestory -- env CLAUDESTORY_PROJECT_ROOT=/path/to/project npx -y @anthropologies/claudestory --mcp
 ```
-
-Set `CLAUDESTORY_PROJECT_ROOT` to your project root (the directory containing `.story/`). This is strongly recommended for MCP since the server may launch from a tool-managed working directory.
 
 ### MCP Tools
 
