@@ -2,10 +2,15 @@
 /**
  * claudestory MCP server entry point.
  *
- * Provides 15 read-only tools for querying .story/ project state.
+ * Provides 19 tools for querying and modifying .story/ project state.
  * Uses direct handler imports — no subprocess spawning.
  * Stdio transport: reads JSON-RPC from stdin, writes to stdout.
  * All diagnostic output goes to stderr.
+ *
+ * Project root discovery:
+ * - CLAUDESTORY_PROJECT_ROOT env var (explicit, highest priority)
+ * - Walk-up from cwd to find .story/config.json
+ * - If neither found, server still starts — tools return "no project" errors
  */
 import { realpathSync, existsSync } from "node:fs";
 import { resolve, join, isAbsolute } from "node:path";
@@ -21,56 +26,65 @@ const CONFIG_PATH = ".story/config.json";
 const version = process.env.CLAUDESTORY_VERSION ?? "0.0.0-dev";
 
 /**
- * Pin project root at startup.
- * CLAUDESTORY_PROJECT_ROOT env var (strongly recommended for MCP) or cwd walk-up.
+ * Try to discover project root. Returns the root path or null.
+ * Never exits — the server stays alive even without a project.
  */
-function pinProjectRoot(): string {
+function tryDiscoverRoot(): string | null {
   const envRoot = process.env[ENV_VAR];
   if (envRoot) {
     if (!isAbsolute(envRoot)) {
-      process.stderr.write(`Error: ${ENV_VAR} must be an absolute path, got: ${envRoot}\n`);
-      process.exit(1);
+      process.stderr.write(`Warning: ${ENV_VAR} must be an absolute path, got: ${envRoot}\n`);
+      return null;
     }
     const resolved = resolve(envRoot);
-    let canonical: string;
     try {
-      canonical = realpathSync(resolved);
+      const canonical = realpathSync(resolved);
+      if (existsSync(join(canonical, CONFIG_PATH))) {
+        return canonical;
+      }
+      process.stderr.write(`Warning: No .story/config.json at ${canonical}\n`);
     } catch {
-      process.stderr.write(`Error: ${ENV_VAR} path does not exist: ${resolved}\n`);
-      process.exit(1);
+      process.stderr.write(`Warning: ${ENV_VAR} path does not exist: ${resolved}\n`);
     }
-    if (!existsSync(join(canonical, CONFIG_PATH))) {
-      process.stderr.write(`Error: No .story/config.json at ${canonical}\n`);
-      process.exit(1);
-    }
-    return canonical;
+    return null;
   }
 
-  // Walk-up from cwd (fallback — discouraged for MCP since server cwd is often tool-managed)
-  const root = discoverProjectRoot();
-  if (!root) {
-    process.stderr.write("Error: No .story/ project found. Set CLAUDESTORY_PROJECT_ROOT or run from a project directory.\n");
-    process.exit(1);
+  try {
+    const root = discoverProjectRoot();
+    return root ? realpathSync(root) : null;
+  } catch {
+    return null;
   }
-  return realpathSync(root);
 }
 
 async function main(): Promise<void> {
-  const root = pinProjectRoot();
+  const root = tryDiscoverRoot();
 
   const server = new McpServer(
     { name: "claudestory", version },
     {
-      instructions: "Start with claudestory_status for a project overview, then claudestory_ticket_next for the highest-priority work, then claudestory_handover_latest for session context.",
+      instructions: root
+        ? "Start with claudestory_status for a project overview, then claudestory_ticket_next for the highest-priority work, then claudestory_handover_latest for session context."
+        : "No .story/ project found in the current directory. Navigate to a project with a .story/ directory, or set CLAUDESTORY_PROJECT_ROOT.",
     },
   );
 
-  registerAllTools(server, root);
+  if (root) {
+    registerAllTools(server, root);
+    process.stderr.write(`claudestory MCP server running (root: ${root})\n`);
+  } else {
+    // Register a single status tool that explains the situation
+    server.registerTool("claudestory_status", {
+      description: "Project summary — returns error if no .story/ project found",
+    }, () => Promise.resolve({
+      content: [{ type: "text" as const, text: "No .story/ project found. Navigate to a directory containing .story/ or set CLAUDESTORY_PROJECT_ROOT." }],
+      isError: true,
+    }));
+    process.stderr.write("claudestory MCP server running (no project found — tools will report errors)\n");
+  }
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
-  process.stderr.write(`claudestory MCP server running (root: ${root})\n`);
 }
 
 main().catch((err: unknown) => {
