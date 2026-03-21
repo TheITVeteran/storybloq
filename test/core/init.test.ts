@@ -25,7 +25,9 @@ describe("initProject", () => {
     expect(existsSync(join(testRoot, ".story", "tickets"))).toBe(true);
     expect(existsSync(join(testRoot, ".story", "issues"))).toBe(true);
     expect(existsSync(join(testRoot, ".story", "handovers"))).toBe(true);
-    expect(result.created).toHaveLength(5);
+    expect(result.created).toHaveLength(6);
+    expect(result.created).toContain(".claude/skills/prime/SKILL.md");
+    expect(existsSync(join(testRoot, ".claude", "skills", "prime", "SKILL.md"))).toBe(true);
   });
 
   it("config has correct values", async () => {
