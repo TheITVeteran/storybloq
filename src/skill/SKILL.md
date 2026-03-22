@@ -85,6 +85,16 @@ Then ask: **"What would you like to work on?"**
 - **Handovers** are session continuity documents. Create one at the end of significant sessions.
 - **Recaps** show what changed since the last snapshot — useful for understanding drift.
 
+## Ticket and Issue Discipline
+
+**Tickets** are planned work — features, tasks, refactors. They represent intentional, scoped commitments.
+
+**Issues** are discovered problems — bugs, inconsistencies, gaps, risks found during work. If you're not sure whether something is a ticket or an issue, make it an issue. It can be promoted to a ticket later.
+
+When working on a task and you encounter a bug, inconsistency, or improvement opportunity that is out of scope for the current ticket, create an issue using `claudestory issue create` (CLI) with a clear title, severity, and impact description. Don't fix it in the current task, don't ignore it — log it. This keeps the issue tracker growing organically and ensures nothing discovered during work is lost.
+
+When starting work on a ticket, update its status to `inprogress`. When done, update to `complete` in the same commit as the code change.
+
 ## Managing Tickets and Issues
 
 Ticket and issue CRUD operations (create, update, delete) are **CLI-only** — there are no MCP tools for these. Use the `claudestory` CLI via Bash:
