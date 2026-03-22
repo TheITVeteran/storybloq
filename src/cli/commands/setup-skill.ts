@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -53,6 +53,13 @@ export async function handleSetupSkill(): Promise<void> {
     process.stderr.write("This may indicate a corrupt installation. Try: npm install -g @anthropologies/claudestory\n");
     process.exitCode = 1;
     return;
+  }
+
+  // Clean up old /prime skill (migrated to /story)
+  const oldPrimeDir = join(homedir(), ".claude", "skills", "prime");
+  if (existsSync(oldPrimeDir)) {
+    await rm(oldPrimeDir, { recursive: true, force: true });
+    log("Removed old /prime skill (migrated to /story)");
   }
 
   const existed = existsSync(join(skillDir, "SKILL.md"));

@@ -22,7 +22,10 @@ export function handleHandoverList(ctx: CommandContext): CommandResult {
   return { output: formatHandoverList(ctx.state.handoverFilenames, ctx.format) };
 }
 
-export async function handleHandoverLatest(ctx: CommandContext): Promise<CommandResult> {
+export async function handleHandoverLatest(
+  ctx: CommandContext,
+  count: number = 1,
+): Promise<CommandResult> {
   if (ctx.state.handoverFilenames.length === 0) {
     return {
       output: formatError("not_found", "No handovers found", ctx.format),
@@ -31,27 +34,42 @@ export async function handleHandoverLatest(ctx: CommandContext): Promise<Command
     };
   }
 
-  const filename = ctx.state.handoverFilenames[0]!;
-  // Validate filename safety (though this comes from the filesystem, not user input)
-  await parseHandoverFilename(filename, ctx.handoversDir);
+  const filenames = ctx.state.handoverFilenames.slice(0, count);
+  const parts: string[] = [];
 
-  try {
-    const content = await readHandover(ctx.handoversDir, filename);
-    return { output: formatHandoverContent(filename, content, ctx.format) };
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+  for (const filename of filenames) {
+    await parseHandoverFilename(filename, ctx.handoversDir);
+    try {
+      const content = await readHandover(ctx.handoversDir, filename);
+      parts.push(formatHandoverContent(filename, content, ctx.format));
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        // Skip missing files silently when loading multiple
+        if (count > 1) continue;
+        return {
+          output: formatError("not_found", `Handover file not found: ${filename}`, ctx.format),
+          exitCode: ExitCode.USER_ERROR,
+          errorCode: "not_found",
+        };
+      }
       return {
-        output: formatError("not_found", `Handover file not found: ${filename}`, ctx.format),
+        output: formatError("io_error", `Cannot read handover: ${(err as Error).message}`, ctx.format),
         exitCode: ExitCode.USER_ERROR,
-        errorCode: "not_found",
+        errorCode: "io_error",
       };
     }
+  }
+
+  if (parts.length === 0) {
     return {
-      output: formatError("io_error", `Cannot read handover: ${(err as Error).message}`, ctx.format),
+      output: formatError("not_found", "No handovers found", ctx.format),
       exitCode: ExitCode.USER_ERROR,
-      errorCode: "io_error",
+      errorCode: "not_found",
     };
   }
+
+  const separator = ctx.format === "json" ? "\n" : "\n\n---\n\n";
+  return { output: parts.join(separator) };
 }
 
 export async function handleHandoverGet(
@@ -147,7 +165,7 @@ export async function handleHandoverCreate(
       // dir empty or unreadable — start at 0
     }
 
-    const nextSeq = maxSeq + 1;
+    let nextSeq = maxSeq + 1;
     if (nextSeq > 99) {
       throw new CliValidationError(
         "conflict",
@@ -155,8 +173,25 @@ export async function handleHandoverCreate(
       );
     }
 
-    const candidate = `${date}-${String(nextSeq).padStart(2, "0")}-${slug}.md`;
-    const candidatePath = join(handoversDir, candidate);
+    let candidate = `${date}-${String(nextSeq).padStart(2, "0")}-${slug}.md`;
+    let candidatePath = join(handoversDir, candidate);
+
+    // Write protection: never overwrite an existing handover file.
+    // Handovers are append-only. If the candidate already exists
+    // (e.g. race condition or manually created file), increment
+    // the sequence number until we find a free slot.
+    while (existsSync(candidatePath)) {
+      nextSeq++;
+      if (nextSeq > 99) {
+        throw new CliValidationError(
+          "conflict",
+          `Too many handovers for ${date}; limit is 99 per day`,
+        );
+      }
+      candidate = `${date}-${String(nextSeq).padStart(2, "0")}-${slug}.md`;
+      candidatePath = join(handoversDir, candidate);
+    }
+
     await parseHandoverFilename(candidate, handoversDir);
     await guardPath(candidatePath, wrapDir);
     await atomicWrite(candidatePath, content);

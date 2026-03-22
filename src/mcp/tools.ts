@@ -184,8 +184,13 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
   }, () => runMcpReadTool(pinnedRoot, handleHandoverList));
 
   server.registerTool("claudestory_handover_latest", {
-    description: "Content of the most recent handover document",
-  }, () => runMcpReadTool(pinnedRoot, handleHandoverLatest));
+    description: "Content of the most recent handover document(s)",
+    inputSchema: {
+      count: z.number().int().min(1).max(10).optional().describe("Number of recent handovers to return (default: 1)"),
+    },
+  }, (args) => runMcpReadTool(pinnedRoot, (ctx) =>
+    handleHandoverLatest(ctx, args.count ?? 1),
+  ));
 
   server.registerTool("claudestory_blocker_list", {
     description: "All roadmap blockers with dates and status",

@@ -118,11 +118,21 @@ export function registerHandoverCommand(yargs: Argv): Argv {
         )
         .command(
           "latest",
-          "Content of most recent handover",
-          (y2) => addFormatOption(y2),
+          "Content of most recent handover(s)",
+          (y2) =>
+            addFormatOption(
+              y2.option("count", {
+                type: "number",
+                default: 1,
+                describe: "Number of recent handovers to return (default: 1)",
+              }),
+            ),
           async (argv) => {
             const format = parseOutputFormat(argv.format);
-            await runReadCommand(format, handleHandoverLatest);
+            const count = Math.max(1, Math.floor(argv.count as number));
+            await runReadCommand(format, (ctx) =>
+              handleHandoverLatest(ctx, count),
+            );
           },
         )
         .command(
