@@ -85,6 +85,8 @@ Then ask: **"What would you like to work on?"**
 - **Handovers** are session continuity documents. Create one at the end of significant sessions.
 - **Recaps** show what changed since the last snapshot — useful for understanding drift.
 
+**Never modify or overwrite existing handover files.** Handovers are append-only historical records. Always create new handover files — never edit, replace, or write to an existing one. If you need to correct something from a previous session, create a new handover that references the correction. This prevents accidental data loss during sessions.
+
 ## Ticket and Issue Discipline
 
 **Tickets** are planned work — features, tasks, refactors. They represent intentional, scoped commitments.
