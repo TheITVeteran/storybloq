@@ -1499,10 +1499,15 @@ export function registerSetupSkillCommand(yargs: Argv): Argv {
   return yargs.command(
     "setup-skill",
     "Install the /story skill globally for Claude Code",
-    () => {},
-    async () => {
+    (y) =>
+      y.option("skip-hooks", {
+        type: "boolean",
+        default: false,
+        description: "Skip PreCompact hook registration",
+      }),
+    async (argv) => {
       const { handleSetupSkill } = await import("./commands/setup-skill.js");
-      await handleSetupSkill();
+      await handleSetupSkill({ skipHooks: argv["skip-hooks"] === true });
     },
   );
 }
