@@ -1,7 +1,18 @@
 {
   "name": "@anthropologies/claudestory",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "license": "UNLICENSED",
+  "description": "Cross-session context persistence for AI coding projects. Tracks tickets, issues, roadmap, and handovers so every session builds on the last.",
+  "keywords": [
+    "claudestory",
+    "claude-code",
+    "ai-development",
+    "session-continuity",
+    "project-management",
+    "mcp",
+    "cli",
+    "agentic-development"
+  ],
   "type": "module",
   "exports": {
     ".": {
