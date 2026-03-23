@@ -70,6 +70,10 @@ Check for project indicators to determine if this is an **existing project** or 
 - `*.xcodeproj` / `Package.swift` → Swift/macOS
 - `*.sln` / `*.csproj` → C#/.NET
 - `Gemfile` → Ruby
+- `build.gradle.kts` / `build.gradle` → Android/Kotlin/Java (or Spring Boot)
+- `pubspec.yaml` → Flutter/Dart
+- `angular.json` → Angular
+- `svelte.config.js` → SvelteKit
 - `.git/` → has version history
 
 If none found (empty or near-empty directory) → skip to **1c. New Project Interview**.
@@ -84,6 +88,23 @@ Read these files to understand the project (skip any that don't exist, skip file
 4. **Top-level directory listing** — identify major components (src/, test/, docs/, etc.)
 5. **Git summary** — `git log --oneline -20` for recent work patterns
 6. **GitHub issues (ask user first)** — `gh issue list --limit 30 --state open --json number,title,labels,body,createdAt`. If gh fails (auth, rate limit, no remote), skip cleanly and note "GitHub import skipped: [reason]"
+
+**Framework-specific deep scan** — after detecting the project type in 1a, scan deeper into framework conventions to understand architecture:
+
+- **Next.js / Nuxt:** Check `app/` vs `pages/` routing, scan `app/api/` or `pages/api/` for API routes, read `next.config.*` / `nuxt.config.*`, check for middleware.
+- **Express / Fastify / Koa:** Scan for route files (`routes/`, `src/routes/`), look for `router.get/post` patterns, identify service/controller layers.
+- **NestJS:** Read `nest-cli.json`, scan `src/` for `*.module.ts`, check for controllers and services.
+- **React (CRA / Vite) / Vue / Svelte:** Check `src/components/` structure, look for state management imports (redux, zustand, pinia), identify routing setup.
+- **Angular:** Read `angular.json`, scan `src/app/` for modules and components, check for services and guards.
+- **Django / FastAPI / Flask:** Check for `manage.py`, scan for app directories or router files, look at models and migrations.
+- **Spring Boot:** Check `pom.xml` or `build.gradle` for Spring deps, scan `src/main/java` for controller/service/repository layers.
+- **Rust:** Check `Cargo.toml` for workspace members, scan for `mod.rs` / `lib.rs` structure, identify crate types.
+- **Swift / Xcode:** Check `.xcodeproj` or `Package.swift`, identify SwiftUI vs UIKit, scan for targets.
+- **Android (Kotlin/Java):** Check `build.gradle.kts`, scan `app/src/main/` for activity/fragment/composable structure, check `AndroidManifest.xml`, identify Compose vs XML layouts.
+- **Flutter / Dart:** Check `pubspec.yaml`, scan `lib/` for feature folders (models/, screens/, widgets/, services/), check for state management imports (provider, riverpod, bloc).
+- **Go:** Check `go.mod`, scan for `cmd/` and `internal/`/`pkg/`, check for `Makefile`.
+- **Monorepo:** If `packages/`, `apps/`, or workspace config detected, list each package with its purpose before proposing phases.
+- **Other:** Scan `src/` two levels deep and identify dominant patterns (MVC, service layers, feature folders).
 
 **Derive project metadata:**
 - **name**: from package manifest `name` field, or directory name
