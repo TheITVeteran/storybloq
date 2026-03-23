@@ -1,7 +1,7 @@
 /**
  * MCP tool registration and shared pipeline for claudestory tools.
  *
- * 27 tools (17 read + 10 write). Read tools use a shared pipeline:
+ * 28 tools (18 read + 10 write). Read tools use a shared pipeline:
  *   loadProject(root) → build CommandContext → call handler → classify result
  */
 import { z } from "zod";
@@ -55,6 +55,7 @@ import {
   handleNoteCreate,
   handleNoteUpdate,
 } from "../cli/commands/note.js";
+import { handleRecommend } from "../cli/commands/recommend.js";
 import { handleSnapshot } from "../cli/commands/snapshot.js";
 import { handleExport } from "../cli/commands/export.js";
 import { handleHandoverCreate } from "../cli/commands/handover.js";
@@ -300,6 +301,16 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
   server.registerTool("claudestory_recap", {
     description: "Session diff — changes since last snapshot + suggested next actions. Shows what changed and what to work on.",
   }, () => runMcpReadTool(pinnedRoot, handleRecap));
+
+  server.registerTool("claudestory_recommend", {
+    description: "Context-aware ranked work suggestions mixing tickets and issues",
+    inputSchema: {
+      count: z.number().int().min(1).max(10).optional()
+        .describe("Number of recommendations (default: 5)"),
+    },
+  }, (args) => runMcpReadTool(pinnedRoot, (ctx) =>
+    handleRecommend(ctx, args.count ?? 5),
+  ));
 
   server.registerTool("claudestory_snapshot", {
     description: "Save current project state for session diffs. Creates a snapshot in .story/snapshots/.",

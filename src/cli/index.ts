@@ -28,6 +28,7 @@ async function runCli(): Promise<void> {
     registerRecapCommand,
     registerExportCommand,
     registerNoteCommand,
+    registerRecommendCommand,
     registerReferenceCommand,
     registerSetupSkillCommand,
   } = await import("./register.js");
@@ -77,6 +78,7 @@ async function runCli(): Promise<void> {
   cli = registerSnapshotCommand(cli);
   cli = registerRecapCommand(cli);
   cli = registerExportCommand(cli);
+  cli = registerRecommendCommand(cli);
   cli = registerReferenceCommand(cli);
   cli = registerSetupSkillCommand(cli);
 

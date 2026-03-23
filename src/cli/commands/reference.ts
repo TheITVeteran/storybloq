@@ -217,6 +217,11 @@ export const COMMANDS: readonly CommandEntry[] = [
     flags: ["--phase", "--all"],
   },
   {
+    name: "recommend",
+    description: "Context-aware work suggestions",
+    usage: "claudestory recommend [--count N] [--format json|md]",
+  },
+  {
     name: "reference",
     description: "Print CLI command and MCP tool reference",
     usage: "claudestory reference [--format json|md]",
@@ -246,6 +251,7 @@ export const MCP_TOOLS: readonly McpToolEntry[] = [
   { name: "claudestory_blocker_list", description: "All roadmap blockers with status" },
   { name: "claudestory_validate", description: "Reference integrity + schema checks" },
   { name: "claudestory_recap", description: "Session diff — changes since last snapshot" },
+  { name: "claudestory_recommend", description: "Context-aware ranked work suggestions", params: ["count?"] },
   { name: "claudestory_snapshot", description: "Save current project state snapshot" },
   { name: "claudestory_export", description: "Self-contained project document", params: ["phase?", "all?"] },
   { name: "claudestory_note_list", description: "List notes", params: ["status?", "tag?"] },

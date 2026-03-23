@@ -261,6 +261,13 @@ Self-contained project document for sharing
 claudestory export [--phase <id>] [--all] [--format json|md]
 ```
 
+### recommend
+Context-aware work suggestions
+
+```
+claudestory recommend [--count N] [--format json|md]
+```
+
 ### reference
 Print CLI command and MCP tool reference
 
@@ -294,6 +301,7 @@ claudestory setup-skill
 - **claudestory_blocker_list** — All roadmap blockers with status
 - **claudestory_validate** — Reference integrity + schema checks
 - **claudestory_recap** — Session diff — changes since last snapshot
+- **claudestory_recommend** (count?) — Context-aware ranked work suggestions
 - **claudestory_snapshot** — Save current project state snapshot
 - **claudestory_export** (phase?, all?) — Self-contained project document
 - **claudestory_note_list** (status?, tag?) — List notes

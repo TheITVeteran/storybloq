@@ -7,6 +7,7 @@ import type { ProjectState } from "./project-state.js";
 import type { LoadWarning } from "./errors.js";
 import type { ValidationResult } from "./validation.js";
 import type { NextTicketOutcome, NextTicketsOutcome } from "./queries.js";
+import type { RecommendResult } from "./recommend.js";
 import { phasesWithStatus, isBlockerCleared } from "./queries.js";
 // --- Exit Codes ---
 
@@ -1095,6 +1096,38 @@ export function formatReference(
   lines.push("- **CLI not found:** Run `npm install -g @anthropologies/claudestory`");
   lines.push("- **Stale data:** Run `claudestory validate` to check integrity");
   lines.push("- **/story not available:** Run `claudestory setup-skill` to install the skill");
+
+  return lines.join("\n");
+}
+
+export function formatRecommendations(
+  result: RecommendResult,
+  format: OutputFormat,
+): string {
+  if (format === "json") {
+    return JSON.stringify(successEnvelope(result), null, 2);
+  }
+
+  if (result.recommendations.length === 0) {
+    return "No recommendations — all work is complete or blocked.";
+  }
+
+  const lines: string[] = ["# Recommendations", ""];
+
+  for (let i = 0; i < result.recommendations.length; i++) {
+    const rec = result.recommendations[i]!;
+    lines.push(
+      `${i + 1}. **${escapeMarkdownInline(rec.id)}** (${rec.kind}) — ${escapeMarkdownInline(rec.title)}`,
+    );
+    lines.push(`   _${escapeMarkdownInline(rec.reason)}_`);
+    lines.push("");
+  }
+
+  if (result.totalCandidates > result.recommendations.length) {
+    lines.push(
+      `Showing ${result.recommendations.length} of ${result.totalCandidates} candidates.`,
+    );
+  }
 
   return lines.join("\n");
 }

@@ -17,9 +17,11 @@ import {
   formatBlockerList,
   formatError,
   formatInitResult,
+  formatRecommendations,
 } from "../../src/core/output-formatter.js";
 import { makeTicket, makeIssue, makeState, makeRoadmap, makePhase } from "./test-factories.js";
 import type { NextTicketOutcome, NextTicketsOutcome } from "../../src/core/queries.js";
+import type { RecommendResult } from "../../src/core/recommend.js";
 import type { ValidationResult } from "../../src/core/validation.js";
 
 describe("envelopes", () => {
@@ -478,5 +480,54 @@ describe("all format functions produce valid JSON", () => {
 
   it("formatBlockerList", () => {
     expect(() => JSON.parse(formatBlockerList(state.roadmap, "json"))).not.toThrow();
+  });
+});
+
+describe("formatRecommendations", () => {
+  it("markdown numbered list with reason lines", () => {
+    const result: RecommendResult = {
+      recommendations: [
+        { id: "ISS-001", kind: "issue", title: "Bug", category: "critical_issue", reason: "Critical issue", score: 900 },
+        { id: "T-001", kind: "ticket", title: "Task", category: "inprogress_ticket", reason: "In-progress", score: 800 },
+      ],
+      totalCandidates: 2,
+    };
+    const md = formatRecommendations(result, "md");
+    expect(md).toContain("# Recommendations");
+    expect(md).toContain("1. **ISS-001** (issue)");
+    expect(md).toContain("2. **T-001** (ticket)");
+    expect(md).toContain("_Critical issue_");
+    expect(md).toContain("_In-progress_");
+  });
+
+  it("empty → 'No recommendations' message", () => {
+    const result: RecommendResult = { recommendations: [], totalCandidates: 0 };
+    const md = formatRecommendations(result, "md");
+    expect(md).toContain("No recommendations");
+  });
+
+  it("JSON envelope with recommendations + totalCandidates", () => {
+    const result: RecommendResult = {
+      recommendations: [
+        { id: "T-001", kind: "ticket", title: "Task", category: "quick_win", reason: "Chore", score: 400 },
+      ],
+      totalCandidates: 5,
+    };
+    const json = formatRecommendations(result, "json");
+    const parsed = JSON.parse(json);
+    expect(parsed.version).toBe(1);
+    expect(parsed.data.recommendations).toHaveLength(1);
+    expect(parsed.data.totalCandidates).toBe(5);
+  });
+
+  it("footer shows 'Showing X of Y' when truncated", () => {
+    const result: RecommendResult = {
+      recommendations: [
+        { id: "T-001", kind: "ticket", title: "Task", category: "quick_win", reason: "Chore", score: 400 },
+      ],
+      totalCandidates: 8,
+    };
+    const md = formatRecommendations(result, "md");
+    expect(md).toContain("Showing 1 of 8 candidates.");
   });
 });

@@ -77,6 +77,8 @@ After loading context, present a concise summary:
 - Any high-severity issues or blockers
 - Key process rules (from WORK_STRATEGIES.md if it exists)
 
+For collaborative sessions, `claudestory_recommend` provides context-aware suggestions mixing tickets and issues. For autonomous sessions, `claudestory_ticket_next` provides queue-based next ticket.
+
 Then ask: **"What would you like to work on?"**
 
 ## Session Lifecycle

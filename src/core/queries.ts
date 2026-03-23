@@ -288,6 +288,17 @@ export function isBlockerCleared(blocker: Blocker): boolean {
   return false;
 }
 
+/**
+ * All descendant leaf tickets of an umbrella (recursive).
+ * Public wrapper around the private cycle-safe helper.
+ */
+export function descendantLeaves(
+  ticketId: string,
+  state: ProjectState,
+): Ticket[] {
+  return collectDescendantLeaves(ticketId, state, new Set());
+}
+
 // --- Private Helpers ---
 
 /**

@@ -39,12 +39,14 @@ export {
 } from "./errors.js";
 export {
   nextTicket,
+  nextTickets,
   blockedTickets,
   ticketsUnblockedBy,
   umbrellaProgress,
   currentPhase,
   phasesWithStatus,
   isBlockerCleared,
+  descendantLeaves,
   type NextTicketResult,
   type NextTicketAllComplete,
   type NextTicketAllBlocked,
@@ -54,6 +56,13 @@ export {
   type UnblockImpact,
   type PhaseWithStatus,
 } from "./queries.js";
+export {
+  recommend,
+  type Recommendation,
+  type RecommendResult,
+  type RecommendCategory,
+  type RecommendItemKind,
+} from "./recommend.js";
 export {
   nextTicketID,
   nextIssueID,
@@ -108,6 +117,7 @@ export {
   formatSnapshotResult,
   formatRecap,
   formatExport,
+  formatRecommendations,
   type ExitCodeValue,
   type SuccessEnvelope,
   type ErrorEnvelope,

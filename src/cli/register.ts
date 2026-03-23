@@ -54,6 +54,7 @@ import {
   handleNoteUpdate,
   handleNoteDelete,
 } from "./commands/note.js";
+import { handleRecommend } from "./commands/recommend.js";
 import {
   handlePhaseList,
   handlePhaseCurrent,
@@ -1821,6 +1822,31 @@ export function registerReferenceCommand(yargs: Argv): Argv {
       const format = parseOutputFormat(argv.format);
       const output = handleReference(format);
       writeOutput(output);
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// setup-skill
+// ---------------------------------------------------------------------------
+// recommend
+// ---------------------------------------------------------------------------
+
+export function registerRecommendCommand(yargs: Argv): Argv {
+  return yargs.command(
+    "recommend",
+    "Context-aware work suggestions",
+    (y) =>
+      addFormatOption(y).option("count", {
+        type: "number",
+        default: 5,
+        describe: "Number of recommendations (1-10)",
+      }),
+    async (argv) => {
+      const format = parseOutputFormat(argv.format);
+      const raw = Number(argv.count) || 5;
+      const count = Math.max(1, Math.min(10, Math.floor(raw)));
+      await runReadCommand(format, (ctx) => handleRecommend(ctx, count));
     },
   );
 }
