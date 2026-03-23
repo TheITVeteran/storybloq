@@ -34,8 +34,8 @@ export const COMMANDS: readonly CommandEntry[] = [
   },
   {
     name: "ticket next",
-    description: "Suggest next ticket to work on",
-    usage: "claudestory ticket next [--format json|md]",
+    description: "Suggest next ticket(s) to work on",
+    usage: "claudestory ticket next [--count N] [--format json|md]",
   },
   {
     name: "ticket blocked",
@@ -235,7 +235,7 @@ export const MCP_TOOLS: readonly McpToolEntry[] = [
   { name: "claudestory_phase_tickets", description: "Leaf tickets for a specific phase", params: ["phaseId"] },
   { name: "claudestory_ticket_list", description: "List leaf tickets with optional filters", params: ["status?", "phase?", "type?"] },
   { name: "claudestory_ticket_get", description: "Get a ticket by ID", params: ["id"] },
-  { name: "claudestory_ticket_next", description: "Highest-priority unblocked ticket" },
+  { name: "claudestory_ticket_next", description: "Highest-priority unblocked ticket(s)", params: ["count?"] },
   { name: "claudestory_ticket_blocked", description: "All blocked tickets with dependencies" },
   { name: "claudestory_issue_list", description: "List issues with optional filters", params: ["status?", "severity?"] },
   { name: "claudestory_issue_get", description: "Get an issue by ID", params: ["id"] },

@@ -9,6 +9,7 @@ import {
   formatPhaseList,
   formatTicket,
   formatNextTicketOutcome,
+  formatNextTicketsOutcome,
   formatTicketList,
   formatIssue,
   formatIssueList,
@@ -18,7 +19,7 @@ import {
   formatInitResult,
 } from "../../src/core/output-formatter.js";
 import { makeTicket, makeIssue, makeState, makeRoadmap, makePhase } from "./test-factories.js";
-import type { NextTicketOutcome } from "../../src/core/queries.js";
+import type { NextTicketOutcome, NextTicketsOutcome } from "../../src/core/queries.js";
 import type { ValidationResult } from "../../src/core/validation.js";
 
 describe("envelopes", () => {
@@ -258,6 +259,135 @@ describe("formatNextTicketOutcome", () => {
       const json = formatNextTicketOutcome(outcome, state, "json");
       expect(() => JSON.parse(json)).not.toThrow();
     }
+  });
+});
+
+describe("formatNextTicketsOutcome", () => {
+  it("single candidate uses # Next: format", () => {
+    const state = makeState({
+      tickets: [makeTicket({ id: "T-001", phase: "p1", description: "Do stuff" })],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const outcome: NextTicketsOutcome = {
+      kind: "found",
+      candidates: [{
+        ticket: state.tickets[0]!,
+        unblockImpact: { ticketId: "T-001", wouldUnblock: [] },
+        umbrellaProgress: null,
+      }],
+      skippedBlockedPhases: [],
+    };
+    const md = formatNextTicketsOutcome(outcome, state, "md");
+    expect(md).toContain("# Next: T-001");
+    expect(md).not.toContain("# 1.");
+  });
+
+  it("multiple candidates use numbered format with separator", () => {
+    const t1 = makeTicket({ id: "T-001", phase: "p1", order: 10 });
+    const t2 = makeTicket({ id: "T-002", phase: "p1", order: 20 });
+    const state = makeState({
+      tickets: [t1, t2],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const outcome: NextTicketsOutcome = {
+      kind: "found",
+      candidates: [
+        { ticket: t1, unblockImpact: { ticketId: "T-001", wouldUnblock: [] }, umbrellaProgress: null },
+        { ticket: t2, unblockImpact: { ticketId: "T-002", wouldUnblock: [] }, umbrellaProgress: null },
+      ],
+      skippedBlockedPhases: [],
+    };
+    const md = formatNextTicketsOutcome(outcome, state, "md");
+    expect(md).toContain("# 1. T-001");
+    expect(md).toContain("# 2. T-002");
+    expect(md).toContain("---");
+  });
+
+  it("JSON contains candidates array and skippedBlockedPhases", () => {
+    const t1 = makeTicket({ id: "T-001", phase: "p1" });
+    const state = makeState({ tickets: [t1] });
+    const outcome: NextTicketsOutcome = {
+      kind: "found",
+      candidates: [{
+        ticket: t1,
+        unblockImpact: { ticketId: "T-001", wouldUnblock: [] },
+        umbrellaProgress: null,
+      }],
+      skippedBlockedPhases: [{ phaseId: "p0", blockedCount: 2 }],
+    };
+    const json = formatNextTicketsOutcome(outcome, state, "json");
+    const parsed = JSON.parse(json);
+    expect(parsed.data.candidates).toHaveLength(1);
+    expect(parsed.data.skippedBlockedPhases).toHaveLength(1);
+  });
+
+  it("renders skipped phases footer when present", () => {
+    const t1 = makeTicket({ id: "T-001", phase: "p2" });
+    const state = makeState({ tickets: [t1] });
+    const outcome: NextTicketsOutcome = {
+      kind: "found",
+      candidates: [{
+        ticket: t1,
+        unblockImpact: { ticketId: "T-001", wouldUnblock: [] },
+        umbrellaProgress: null,
+      }],
+      skippedBlockedPhases: [{ phaseId: "p1", blockedCount: 3 }],
+    };
+    const md = formatNextTicketsOutcome(outcome, state, "md");
+    expect(md).toContain("Skipped blocked phases");
+    expect(md).toContain("p1 (3 blocked)");
+  });
+
+  it("all_blocked with multiple phases lists all", () => {
+    const state = makeState();
+    const outcome: NextTicketsOutcome = {
+      kind: "all_blocked",
+      phases: [
+        { phaseId: "p1", blockedCount: 2 },
+        { phaseId: "p2", blockedCount: 3 },
+      ],
+    };
+    const md = formatNextTicketsOutcome(outcome, state, "md");
+    expect(md).toContain("p1 (2 blocked)");
+    expect(md).toContain("p2 (3 blocked)");
+    expect(md).toContain("2 phases");
+  });
+
+  it("renders umbrella progress when populated", () => {
+    const t1 = makeTicket({ id: "T-001", phase: "p1" });
+    const state = makeState({ tickets: [t1] });
+    const outcome: NextTicketsOutcome = {
+      kind: "found",
+      candidates: [{
+        ticket: t1,
+        unblockImpact: { ticketId: "T-001", wouldUnblock: [] },
+        umbrellaProgress: { total: 5, complete: 2, status: "inprogress" },
+      }],
+      skippedBlockedPhases: [],
+    };
+    const md = formatNextTicketsOutcome(outcome, state, "md");
+    expect(md).toContain("Parent progress: 2/5 complete (inprogress)");
+  });
+
+  it("JSON is valid for all outcome types", () => {
+    const state = makeState();
+    const outcomes: NextTicketsOutcome[] = [
+      { kind: "empty_project" },
+      { kind: "all_complete" },
+      { kind: "all_blocked", phases: [{ phaseId: "p1", blockedCount: 2 }] },
+    ];
+    for (const outcome of outcomes) {
+      const json = formatNextTicketsOutcome(outcome, state, "json");
+      expect(() => JSON.parse(json)).not.toThrow();
+      const parsed = JSON.parse(json);
+      expect(parsed.version).toBe(1);
+    }
+  });
+
+  it("terminal states produce correct messages", () => {
+    const state = makeState();
+    expect(formatNextTicketsOutcome({ kind: "all_complete" }, state, "md")).toContain("All phases complete");
+    expect(formatNextTicketsOutcome({ kind: "empty_project" }, state, "md")).toContain("No phased tickets");
   });
 });
 

@@ -1,4 +1,4 @@
-import { nextTicket, blockedTickets } from "../../core/queries.js";
+import { nextTicket, nextTickets, blockedTickets } from "../../core/queries.js";
 import { nextTicketID, nextOrder } from "../../core/id-allocation.js";
 import { validateProject } from "../../core/validation.js";
 import { ProjectState } from "../../core/project-state.js";
@@ -11,6 +11,7 @@ import {
   formatTicketList,
   formatTicket,
   formatNextTicketOutcome,
+  formatNextTicketsOutcome,
   formatBlockedTickets,
   formatError,
   successEnvelope,
@@ -81,13 +82,17 @@ export function handleTicketGet(
   return { output: formatTicket(ticket, ctx.state, ctx.format) };
 }
 
-export function handleTicketNext(ctx: CommandContext): CommandResult {
-  const outcome = nextTicket(ctx.state);
+export function handleTicketNext(ctx: CommandContext, count: number = 1): CommandResult {
+  if (count <= 1) {
+    // Existing path — unchanged behavior, uses nextTicket (early-stop at blocked phase)
+    const outcome = nextTicket(ctx.state);
+    const exitCode = outcome.kind === "found" ? ExitCode.OK : ExitCode.USER_ERROR;
+    return { output: formatNextTicketOutcome(outcome, ctx.state, ctx.format), exitCode };
+  }
+  // Multi-candidate path — continues across blocked phases
+  const outcome = nextTickets(ctx.state, count);
   const exitCode = outcome.kind === "found" ? ExitCode.OK : ExitCode.USER_ERROR;
-  return {
-    output: formatNextTicketOutcome(outcome, ctx.state, ctx.format),
-    exitCode,
-  };
+  return { output: formatNextTicketsOutcome(outcome, ctx.state, ctx.format), exitCode };
 }
 
 export function handleTicketBlocked(ctx: CommandContext): CommandResult {

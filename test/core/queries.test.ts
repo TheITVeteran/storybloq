@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   nextTicket,
+  nextTickets,
   blockedTickets,
   ticketsUnblockedBy,
   umbrellaProgress,
@@ -175,6 +176,190 @@ describe("nextTicket", () => {
     const result = nextTicket(state);
     if (result.kind === "found") {
       expect(result.ticket.id).toBe("T-002");
+    }
+  });
+});
+
+describe("nextTickets", () => {
+  it("count=1 with no blocked phases returns same ticket as nextTicket", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "open" }),
+        makeTicket({ id: "T-002", phase: "p1", order: 20, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const single = nextTicket(state);
+    const multi = nextTickets(state, 1);
+    expect(multi.kind).toBe("found");
+    if (multi.kind === "found" && single.kind === "found") {
+      expect(multi.candidates).toHaveLength(1);
+      expect(multi.candidates[0]!.ticket.id).toBe(single.ticket.id);
+    }
+  });
+
+  it("count=1 with phase 1 all-blocked continues to phase 2 (differs from nextTicket)", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "open", blockedBy: ["T-999"] }),
+        makeTicket({ id: "T-002", phase: "p2", order: 10, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" }), makePhase({ id: "p2" })]),
+    });
+    // nextTicket stops at blocked phase
+    expect(nextTicket(state).kind).toBe("all_blocked");
+    // nextTickets continues past it
+    const result = nextTickets(state, 1);
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]!.ticket.id).toBe("T-002");
+      expect(result.skippedBlockedPhases).toHaveLength(1);
+      expect(result.skippedBlockedPhases[0]!.phaseId).toBe("p1");
+    }
+  });
+
+  it("collects multiple candidates across phases", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "open" }),
+        makeTicket({ id: "T-002", phase: "p1", order: 20, status: "open" }),
+        makeTicket({ id: "T-003", phase: "p2", order: 10, status: "open" }),
+        makeTicket({ id: "T-004", phase: "p2", order: 20, status: "open" }),
+        makeTicket({ id: "T-005", phase: "p2", order: 30, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" }), makePhase({ id: "p2" })]),
+    });
+    const result = nextTickets(state, 3);
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.candidates).toHaveLength(3);
+      expect(result.candidates[0]!.ticket.id).toBe("T-001");
+      expect(result.candidates[1]!.ticket.id).toBe("T-002");
+      expect(result.candidates[2]!.ticket.id).toBe("T-003");
+    }
+  });
+
+  it("skips blocked phase, collects from later phase with skippedBlockedPhases", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "open", blockedBy: ["T-999"] }),
+        makeTicket({ id: "T-002", phase: "p1", order: 20, status: "open", blockedBy: ["T-999"] }),
+        makeTicket({ id: "T-003", phase: "p2", order: 10, status: "open" }),
+        makeTicket({ id: "T-004", phase: "p2", order: 20, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" }), makePhase({ id: "p2" })]),
+    });
+    const result = nextTickets(state, 3);
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.candidates).toHaveLength(2);
+      expect(result.candidates[0]!.ticket.id).toBe("T-003");
+      expect(result.candidates[1]!.ticket.id).toBe("T-004");
+      expect(result.skippedBlockedPhases).toHaveLength(1);
+      expect(result.skippedBlockedPhases[0]!.phaseId).toBe("p1");
+      expect(result.skippedBlockedPhases[0]!.blockedCount).toBe(2);
+    }
+  });
+
+  it("count exceeding available returns all available (partial fill)", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "open" }),
+        makeTicket({ id: "T-002", phase: "p1", order: 20, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const result = nextTickets(state, 10);
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.candidates).toHaveLength(2);
+    }
+  });
+
+  it("all tickets in all phases blocked returns all_blocked with all phases", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", status: "open", blockedBy: ["T-999"] }),
+        makeTicket({ id: "T-002", phase: "p2", status: "open", blockedBy: ["T-999"] }),
+        makeTicket({ id: "T-003", phase: "p2", status: "open", blockedBy: ["T-999"] }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" }), makePhase({ id: "p2" })]),
+    });
+    const result = nextTickets(state, 3);
+    expect(result.kind).toBe("all_blocked");
+    if (result.kind === "all_blocked") {
+      expect(result.phases).toHaveLength(2);
+      expect(result.phases[0]!.phaseId).toBe("p1");
+      expect(result.phases[0]!.blockedCount).toBe(1);
+      expect(result.phases[1]!.phaseId).toBe("p2");
+      expect(result.phases[1]!.blockedCount).toBe(2);
+    }
+  });
+
+  it("all phases complete returns all_complete", () => {
+    const state = makeState({
+      tickets: [makeTicket({ id: "T-001", phase: "p1", status: "complete" })],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    expect(nextTickets(state, 3).kind).toBe("all_complete");
+  });
+
+  it("empty project returns empty_project", () => {
+    const state = makeState({ roadmap: makeRoadmap([makePhase({ id: "p1" })]) });
+    expect(nextTickets(state, 3).kind).toBe("empty_project");
+  });
+
+  it("collects multiple unblocked leaves in same phase before moving on", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "open" }),
+        makeTicket({ id: "T-002", phase: "p1", order: 20, status: "open", blockedBy: ["T-999"] }),
+        makeTicket({ id: "T-003", phase: "p1", order: 30, status: "open" }),
+        makeTicket({ id: "T-004", phase: "p2", order: 10, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" }), makePhase({ id: "p2" })]),
+    });
+    const result = nextTickets(state, 3);
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.candidates).toHaveLength(3);
+      // T-001 and T-003 from p1 (T-002 blocked), then T-004 from p2
+      expect(result.candidates[0]!.ticket.id).toBe("T-001");
+      expect(result.candidates[1]!.ticket.id).toBe("T-003");
+      expect(result.candidates[2]!.ticket.id).toBe("T-004");
+    }
+  });
+
+  it("includes inprogress tickets as candidates", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "inprogress" }),
+        makeTicket({ id: "T-002", phase: "p1", order: 20, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const result = nextTickets(state, 2);
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.candidates).toHaveLength(2);
+      expect(result.candidates[0]!.ticket.id).toBe("T-001");
+      expect(result.candidates[0]!.ticket.status).toBe("inprogress");
+    }
+  });
+
+  it("count < 1 treated as 1", () => {
+    const state = makeState({
+      tickets: [
+        makeTicket({ id: "T-001", phase: "p1", order: 10, status: "open" }),
+        makeTicket({ id: "T-002", phase: "p1", order: 20, status: "open" }),
+      ],
+      roadmap: makeRoadmap([makePhase({ id: "p1" })]),
+    });
+    const result = nextTickets(state, 0);
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.candidates).toHaveLength(1);
     }
   });
 });

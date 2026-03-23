@@ -6,7 +6,7 @@ import type { Roadmap } from "../models/roadmap.js";
 import type { ProjectState } from "./project-state.js";
 import type { LoadWarning } from "./errors.js";
 import type { ValidationResult } from "./validation.js";
-import type { NextTicketOutcome } from "./queries.js";
+import type { NextTicketOutcome, NextTicketsOutcome } from "./queries.js";
 import { phasesWithStatus, isBlockerCleared } from "./queries.js";
 // --- Exit Codes ---
 
@@ -255,6 +255,74 @@ export function formatNextTicketOutcome(
 
       if (t.description) {
         lines.push("", fencedBlock(t.description));
+      }
+
+      return lines.join("\n");
+    }
+  }
+}
+
+export function formatNextTicketsOutcome(
+  outcome: NextTicketsOutcome,
+  state: ProjectState,
+  format: OutputFormat,
+): string {
+  if (format === "json") {
+    return JSON.stringify(successEnvelope(outcome), null, 2);
+  }
+
+  switch (outcome.kind) {
+    case "empty_project":
+      return "No phased tickets found.";
+
+    case "all_complete":
+      return "All phases complete.";
+
+    case "all_blocked": {
+      const details = outcome.phases
+        .map((p) => `${escapeMarkdownInline(p.phaseId)} (${p.blockedCount} blocked)`)
+        .join(", ");
+      return `All incomplete tickets are blocked across ${outcome.phases.length} phase${outcome.phases.length === 1 ? "" : "s"}: ${details}`;
+    }
+
+    case "found": {
+      const { candidates, skippedBlockedPhases } = outcome;
+      const lines: string[] = [];
+
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i]!;
+        const t = c.ticket;
+
+        if (i > 0) lines.push("", "---", "");
+
+        // Single candidate: use # Next: format; multiple: use numbered format
+        if (candidates.length === 1) {
+          lines.push(`# Next: ${escapeMarkdownInline(t.id)} — ${escapeMarkdownInline(t.title)}`);
+        } else {
+          lines.push(`# ${i + 1}. ${escapeMarkdownInline(t.id)} — ${escapeMarkdownInline(t.title)}`);
+        }
+        lines.push("", `Phase: ${t.phase ?? "none"} | Order: ${t.order} | Type: ${t.type}`);
+
+        if (c.unblockImpact.wouldUnblock.length > 0) {
+          const ids = c.unblockImpact.wouldUnblock.map((u) => u.id).join(", ");
+          lines.push(`Completing this unblocks: ${ids}`);
+        }
+
+        if (c.umbrellaProgress) {
+          const p = c.umbrellaProgress;
+          lines.push(`Parent progress: ${p.complete}/${p.total} complete (${p.status})`);
+        }
+
+        if (t.description) {
+          lines.push("", fencedBlock(t.description));
+        }
+      }
+
+      if (skippedBlockedPhases.length > 0) {
+        const details = skippedBlockedPhases
+          .map((p) => `${escapeMarkdownInline(p.phaseId)} (${p.blockedCount} blocked)`)
+          .join(", ");
+        lines.push("", "---", "", `Skipped blocked phases: ${details}`);
       }
 
       return lines.join("\n");

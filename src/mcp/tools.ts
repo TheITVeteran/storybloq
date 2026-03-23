@@ -184,8 +184,14 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
   }, () => runMcpReadTool(pinnedRoot, handlePhaseCurrent));
 
   server.registerTool("claudestory_ticket_next", {
-    description: "Highest-priority unblocked ticket with unblock impact and umbrella progress",
-  }, () => runMcpReadTool(pinnedRoot, handleTicketNext));
+    description: "Highest-priority unblocked ticket(s) with unblock impact and umbrella progress",
+    inputSchema: {
+      count: z.number().int().min(1).max(10).optional()
+        .describe("Number of candidates to return (default: 1)"),
+    },
+  }, (args) => runMcpReadTool(pinnedRoot, (ctx) =>
+    handleTicketNext(ctx, args.count ?? 1),
+  ));
 
   server.registerTool("claudestory_ticket_blocked", {
     description: "All blocked tickets with their blocking dependencies",

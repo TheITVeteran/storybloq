@@ -42,6 +42,36 @@ export type NextTicketOutcome =
   | NextTicketAllBlocked
   | NextTicketEmpty;
 
+// --- Multi-candidate result types (nextTickets) ---
+
+export interface NextTicketCandidate {
+  readonly ticket: Ticket;
+  readonly unblockImpact: UnblockImpact;
+  readonly umbrellaProgress: UmbrellaProgress | null;
+}
+
+export interface SkippedBlockedPhase {
+  readonly phaseId: string;
+  readonly blockedCount: number;
+}
+
+export interface NextTicketsResult {
+  readonly kind: "found";
+  readonly candidates: readonly NextTicketCandidate[];
+  readonly skippedBlockedPhases: readonly SkippedBlockedPhase[];
+}
+
+export interface NextTicketsAllBlocked {
+  readonly kind: "all_blocked";
+  readonly phases: readonly SkippedBlockedPhase[];
+}
+
+export type NextTicketsOutcome =
+  | NextTicketsResult
+  | NextTicketsAllBlocked
+  | NextTicketAllComplete
+  | NextTicketEmpty;
+
 export interface PhaseWithStatus {
   readonly phase: Phase;
   readonly status: PhaseStatus;
@@ -102,6 +132,76 @@ export function nextTicket(state: ProjectState): NextTicketOutcome {
   }
 
   // All phases had zero leaves (shouldn't happen if leafTickets.length > 0)
+  return { kind: "empty_project" };
+}
+
+/**
+ * Up to `count` unblocked leaf tickets across all non-complete phases
+ * (roadmap order). Unlike nextTicket, continues past fully-blocked phases
+ * and collects multiple candidates within the same phase.
+ */
+export function nextTickets(
+  state: ProjectState,
+  count: number,
+): NextTicketsOutcome {
+  const effectiveCount = Math.max(1, count);
+  const phases = state.roadmap.phases;
+  if (phases.length === 0 || state.leafTickets.length === 0) {
+    return { kind: "empty_project" };
+  }
+
+  const candidates: NextTicketCandidate[] = [];
+  const skippedBlockedPhases: SkippedBlockedPhase[] = [];
+  let allPhasesComplete = true;
+
+  for (const phase of phases) {
+    if (candidates.length >= effectiveCount) break;
+
+    const leaves = state.phaseTickets(phase.id);
+    if (leaves.length === 0) continue;
+
+    const status = state.phaseStatus(phase.id);
+    if (status === "complete") continue;
+
+    allPhasesComplete = false;
+
+    const incompleteLeaves = leaves.filter((t) => t.status !== "complete");
+    const unblocked = incompleteLeaves.filter((t) => !state.isBlocked(t));
+
+    if (unblocked.length === 0) {
+      skippedBlockedPhases.push({
+        phaseId: phase.id,
+        blockedCount: incompleteLeaves.length,
+      });
+      continue;
+    }
+
+    const remaining = effectiveCount - candidates.length;
+    for (const ticket of unblocked.slice(0, remaining)) {
+      const impact = ticketsUnblockedBy(ticket.id, state);
+      const progress = ticket.parentTicket
+        ? umbrellaProgress(ticket.parentTicket, state)
+        : null;
+      candidates.push({
+        ticket,
+        unblockImpact: { ticketId: ticket.id, wouldUnblock: impact },
+        umbrellaProgress: progress,
+      });
+    }
+  }
+
+  if (candidates.length > 0) {
+    return { kind: "found", candidates, skippedBlockedPhases };
+  }
+
+  if (skippedBlockedPhases.length > 0) {
+    return { kind: "all_blocked", phases: skippedBlockedPhases };
+  }
+
+  if (allPhasesComplete) {
+    return { kind: "all_complete" };
+  }
+
   return { kind: "empty_project" };
 }
 

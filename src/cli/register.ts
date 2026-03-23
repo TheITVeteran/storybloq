@@ -471,10 +471,16 @@ export function registerTicketCommand(yargs: Argv): Argv {
         .command(
           "next",
           "Suggest next ticket to work on",
-          (y2) => addFormatOption(y2),
+          (y2) => addFormatOption(y2).option("count", {
+            type: "number",
+            default: 1,
+            describe: "Number of candidates to suggest (1-10)",
+          }),
           async (argv) => {
             const format = parseOutputFormat(argv.format);
-            await runReadCommand(format, handleTicketNext);
+            const raw = Number(argv.count) || 1;
+            const count = Math.max(1, Math.min(10, Math.floor(raw)));
+            await runReadCommand(format, (ctx) => handleTicketNext(ctx, count));
           },
         )
         .command(

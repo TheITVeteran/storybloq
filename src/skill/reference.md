@@ -31,10 +31,10 @@ claudestory ticket get <id> [--format json|md]
 ```
 
 ### ticket next
-Suggest next ticket to work on
+Suggest next ticket(s) to work on
 
 ```
-claudestory ticket next [--format json|md]
+claudestory ticket next [--count N] [--format json|md]
 ```
 
 ### ticket blocked
@@ -283,7 +283,7 @@ claudestory setup-skill
 - **claudestory_phase_tickets** (phaseId) — Leaf tickets for a specific phase
 - **claudestory_ticket_list** (status?, phase?, type?) — List leaf tickets with optional filters
 - **claudestory_ticket_get** (id) — Get a ticket by ID
-- **claudestory_ticket_next** — Highest-priority unblocked ticket
+- **claudestory_ticket_next** (count?) — Highest-priority unblocked ticket(s)
 - **claudestory_ticket_blocked** — All blocked tickets with dependencies
 - **claudestory_issue_list** (status?, severity?) — List issues with optional filters
 - **claudestory_issue_get** (id) — Get an issue by ID
