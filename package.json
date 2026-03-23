@@ -1,6 +1,7 @@
 {
   "name": "@anthropologies/claudestory",
   "version": "0.1.9",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {
