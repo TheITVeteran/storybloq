@@ -1725,7 +1725,6 @@ export function registerNoteCommand(yargs: Argv): Argv {
                 })
                 .option("clear-tags", {
                   type: "boolean",
-                  default: false,
                   describe: "Clear all tags",
                 })
                 .option("status", {
