@@ -323,6 +323,10 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
         // Error already logged by registerHook
         break;
     }
+  } else if (!cliInPath) {
+    // Hook registration skipped because CLI not in path — already logged above
+  } else if (skipHooks) {
+    // Hook registration skipped — already logged by PreCompact block above
   }
 
   log("");

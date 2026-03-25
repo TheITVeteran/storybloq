@@ -148,14 +148,14 @@ function findActiveSession(root: string): SessionState | null {
 }
 
 // ---------------------------------------------------------------------------
-// Write status.json
+// Gitignore — one-time check per process
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Gitignore — ensure status.json and sessions/ are ignored
-// ---------------------------------------------------------------------------
+const gitignoreCheckedRoots = new Set<string>();
 
-function ensureGitignoreSync(root: string): void {
+function ensureGitignoreOnce(root: string): void {
+  if (gitignoreCheckedRoots.has(root)) return;
+
   const gitignorePath = join(root, ".story", ".gitignore");
   const requiredEntries = ["snapshots/", "status.json", "sessions/"];
 
@@ -168,15 +168,19 @@ function ensureGitignoreSync(root: string): void {
 
   const lines = existing.split("\n").map((l) => l.trim());
   const missing = requiredEntries.filter((e) => !lines.includes(e));
-  if (missing.length === 0) return;
+  if (missing.length === 0) {
+    gitignoreCheckedRoots.add(root);
+    return;
+  }
 
   let content = existing;
   if (content.length > 0 && !content.endsWith("\n")) content += "\n";
   content += missing.join("\n") + "\n";
   try {
     writeFileSync(gitignorePath, content, "utf-8");
+    gitignoreCheckedRoots.add(root); // Only mark checked on success
   } catch {
-    // Best-effort — don't block status writing
+    // Best-effort — don't block status writing, will retry next invocation
   }
 }
 
@@ -185,7 +189,7 @@ function ensureGitignoreSync(root: string): void {
 // ---------------------------------------------------------------------------
 
 function writeStatus(root: string, payload: StatusPayload): void {
-  ensureGitignoreSync(root);
+  ensureGitignoreOnce(root);
   const statusPath = join(root, ".story", "status.json");
   const content = JSON.stringify(payload, null, 2) + "\n";
   atomicWriteSync(statusPath, content);
