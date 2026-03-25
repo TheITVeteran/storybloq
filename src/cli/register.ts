@@ -1926,3 +1926,19 @@ export function registerSetupSkillCommand(yargs: Argv): Argv {
     },
   );
 }
+
+// ---------------------------------------------------------------------------
+// hook-status
+// ---------------------------------------------------------------------------
+
+export function registerHookStatusCommand(yargs: Argv): Argv {
+  return yargs.command(
+    "hook-status",
+    false as unknown as string, // hidden — machine-facing, not shown in --help
+    (y) => y,
+    async () => {
+      const { handleHookStatus } = await import("./commands/hook-status.js");
+      await handleHookStatus();
+    },
+  );
+}

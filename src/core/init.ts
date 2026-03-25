@@ -1,4 +1,4 @@
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, stat, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { writeConfig, writeRoadmap, loadProject } from "./project-loader.js";
 import { ProjectLoaderError, CURRENT_SCHEMA_VERSION, INTEGRITY_WARNING_TYPES } from "./errors.js";
@@ -103,6 +103,10 @@ export async function initProject(
   await writeConfig(config, absRoot);
   await writeRoadmap(roadmap, absRoot);
 
+  // Ensure .story/.gitignore covers ephemeral files
+  const gitignorePath = join(wrapDir, ".gitignore");
+  await ensureGitignoreEntries(gitignorePath, ["snapshots/", "status.json", "sessions/"]);
+
   // Validate existing data files when force-reinitializing.
   // Uses loadProject (permissive) — catches both JSON parse errors AND Zod schema
   // violations, matching exactly what strict mode will reject on future writes.
@@ -127,4 +131,29 @@ export async function initProject(
     created,
     warnings,
   };
+}
+
+/**
+ * Ensures a .gitignore file contains the specified entries.
+ * Creates the file if it doesn't exist. Idempotent — skips entries already present.
+ */
+async function ensureGitignoreEntries(
+  gitignorePath: string,
+  entries: string[],
+): Promise<void> {
+  let existing = "";
+  try {
+    existing = await readFile(gitignorePath, "utf-8");
+  } catch {
+    // File doesn't exist — will create
+  }
+
+  const lines = existing.split("\n").map((l) => l.trim());
+  const missing = entries.filter((e) => !lines.includes(e));
+  if (missing.length === 0) return;
+
+  let content = existing;
+  if (content.length > 0 && !content.endsWith("\n")) content += "\n";
+  content += missing.join("\n") + "\n";
+  await writeFile(gitignorePath, content, "utf-8");
 }

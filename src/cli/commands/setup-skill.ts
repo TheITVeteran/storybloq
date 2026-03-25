@@ -35,7 +35,8 @@ export function resolveSkillSourceDir(): string {
 // PreCompact hook registration
 // ---------------------------------------------------------------------------
 
-const HOOK_COMMAND = "claudestory snapshot --quiet";
+const PRECOMPACT_HOOK_COMMAND = "claudestory snapshot --quiet";
+const STOP_HOOK_COMMAND = "claudestory hook-status";
 
 interface HookEntry {
   type: string;
@@ -50,24 +51,26 @@ interface MatcherGroup {
 }
 
 /**
- * Check if a hook entry matches our canonical command.
+ * Check if a hook entry matches a given command.
  */
-function isOurHook(entry: unknown): boolean {
+function isHookWithCommand(entry: unknown, command: string): boolean {
   if (typeof entry !== "object" || entry === null) return false;
   const e = entry as HookEntry;
-  return e.type === "command" && typeof e.command === "string" && e.command.trim() === HOOK_COMMAND;
+  return e.type === "command" && typeof e.command === "string" && e.command.trim() === command;
 }
 
 /**
- * Registers a PreCompact hook in ~/.claude/settings.json (or custom path).
+ * Registers a hook in ~/.claude/settings.json (or custom path).
  *
  * - Idempotent: skips if already present
  * - Non-destructive: leaves file untouched on parse/type errors
  * - Atomic: writes to temp file, then renames
- *
- * Exported for testing — callers can override settingsPath.
  */
-export async function registerPreCompactHook(settingsPath?: string): Promise<"registered" | "exists" | "skipped"> {
+async function registerHook(
+  hookType: string,
+  hookEntry: HookEntry,
+  settingsPath?: string,
+): Promise<"registered" | "exists" | "skipped"> {
   const path = settingsPath ?? join(homedir(), ".claude", "settings.json");
 
   // Read existing settings
@@ -107,44 +110,45 @@ export async function registerPreCompactHook(settingsPath?: string): Promise<"re
 
   const hooks = settings.hooks as Record<string, unknown>;
 
-  // Type guard: PreCompact must be array
-  if ("PreCompact" in hooks) {
-    if (!Array.isArray(hooks.PreCompact)) {
-      process.stderr.write(`${path} has unexpected hooks.PreCompact format — skipping hook registration.\n`);
+  // Type guard: hook type must be array
+  if (hookType in hooks) {
+    if (!Array.isArray(hooks[hookType])) {
+      process.stderr.write(`${path} has unexpected hooks.${hookType} format — skipping hook registration.\n`);
       return "skipped";
     }
   } else {
-    hooks.PreCompact = [];
+    hooks[hookType] = [];
   }
 
-  const preCompact = hooks.PreCompact as unknown[];
+  const hookArray = hooks[hookType] as unknown[];
 
   // Idempotency: scan for existing command (defensive — skip malformed entries)
-  for (const group of preCompact) {
-    if (typeof group !== "object" || group === null) continue;
-    const g = group as MatcherGroup;
-    if (!Array.isArray(g.hooks)) continue;
-    for (const entry of g.hooks) {
-      if (isOurHook(entry)) return "exists";
+  const hookCommand = hookEntry.command;
+  if (hookCommand) {
+    for (const group of hookArray) {
+      if (typeof group !== "object" || group === null) continue;
+      const g = group as MatcherGroup;
+      if (!Array.isArray(g.hooks)) continue;
+      for (const entry of g.hooks) {
+        if (isHookWithCommand(entry, hookCommand)) return "exists";
+      }
     }
   }
 
   // Find existing empty-matcher group with valid hooks array, or create one
-  const ourEntry: HookEntry = { type: "command", command: HOOK_COMMAND };
-
   let appended = false;
-  for (const group of preCompact) {
+  for (const group of hookArray) {
     if (typeof group !== "object" || group === null) continue;
     const g = group as MatcherGroup;
     if (g.matcher === "" && Array.isArray(g.hooks)) {
-      g.hooks.push(ourEntry);
+      g.hooks.push(hookEntry);
       appended = true;
       break;
     }
   }
 
   if (!appended) {
-    preCompact.push({ matcher: "", hooks: [ourEntry] });
+    hookArray.push({ matcher: "", hooks: [hookEntry] });
   }
 
   // Atomic write: temp file + rename
@@ -163,6 +167,22 @@ export async function registerPreCompactHook(settingsPath?: string): Promise<"re
   }
 
   return "registered";
+}
+
+/**
+ * Registers the PreCompact hook (snapshot before context compaction).
+ * Exported for testing — callers can override settingsPath.
+ */
+export async function registerPreCompactHook(settingsPath?: string): Promise<"registered" | "exists" | "skipped"> {
+  return registerHook("PreCompact", { type: "command", command: PRECOMPACT_HOOK_COMMAND }, settingsPath);
+}
+
+/**
+ * Registers the Stop hook (status.json writer after every Claude response).
+ * Exported for testing — callers can override settingsPath.
+ */
+export async function registerStopHook(settingsPath?: string): Promise<"registered" | "exists" | "skipped"> {
+  return registerHook("Stop", { type: "command", command: STOP_HOOK_COMMAND, async: true }, settingsPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +307,22 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
     // Hook registration skipped because CLI not in path — already logged above
   } else if (skipHooks) {
     log("  Hook registration skipped (--skip-hooks)");
+  }
+
+  // Stop hook registration
+  if (cliInPath && !skipHooks) {
+    const stopResult = await registerStopHook();
+    switch (stopResult) {
+      case "registered":
+        log("  Stop hook registered — status.json updated after every Claude response");
+        break;
+      case "exists":
+        log("  Stop hook already configured");
+        break;
+      case "skipped":
+        // Error already logged by registerHook
+        break;
+    }
   }
 
   log("");
