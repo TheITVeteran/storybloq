@@ -1983,10 +1983,14 @@ export function registerConfigCommand(yargs: Argv): Argv {
             writeOutput(result.output);
             if (result.errorCode) process.exitCode = 1;
           } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
-            const { formatError } = await import("../core/output-formatter.js");
-            const { ExitCode } = await import("../core/output-formatter.js");
-            writeOutput(formatError("io_error", message, format));
+            const { formatError, ExitCode } = await import("../core/output-formatter.js");
+            const { ProjectLoaderError } = await import("../core/errors.js");
+            if (err instanceof ProjectLoaderError) {
+              writeOutput(formatError(err.code, err.message, format));
+            } else {
+              const message = err instanceof Error ? err.message : String(err);
+              writeOutput(formatError("io_error", message, format));
+            }
             process.exitCode = ExitCode.USER_ERROR;
           }
         },
