@@ -242,6 +242,7 @@ export const SessionStateSchema = z.object({
     risk: z.string().optional(),
     realizedRisk: z.string().optional(),
     claimed: z.boolean().default(false),
+    lastPlanHash: z.string().optional(),
   }).optional(),
 
   // Review tracking

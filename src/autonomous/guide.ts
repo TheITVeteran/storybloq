@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
   deriveWorkspaceId,
@@ -400,11 +400,17 @@ async function handleReportPickTicket(
   if (!ticket) return guideError(new Error(`Ticket ${ticketId} not found`));
   if (projectState.isBlocked(ticket)) return guideError(new Error(`Ticket ${ticketId} is blocked`));
 
+  // Clean up stale plan from previous ticket (ISS-029)
+  const planPath = join(dir, "plan.md");
+  try { if (existsSync(planPath)) unlinkSync(planPath); } catch { /* best-effort */ }
+
   const written = writeSessionSync(dir, {
     ...state,
     state: "PLAN",
     previousState: "PICK_TICKET",
     ticket: { id: ticket.id, title: ticket.title, claimed: true },
+    reviews: { plan: [], code: [] },
+    finalizeCheckpoint: null,
   });
 
   appendEvent(dir, {
@@ -455,6 +461,15 @@ async function handleReportPlan(
     });
   }
 
+  // Plan fingerprint — detect unchanged plan after revise (ISS-035)
+  const planHash = simpleHash(planContent);
+  if (state.ticket?.lastPlanHash && state.ticket.lastPlanHash === planHash) {
+    return guideResult(state, "PLAN", {
+      instruction: "Plan has not changed since the last review. Address the review findings, then revise the plan and call me again.",
+      reminders: [],
+    });
+  }
+
   // Compute initial risk
   const risk = assessRisk(undefined, undefined);
 
@@ -478,7 +493,7 @@ async function handleReportPlan(
     ...state,
     state: "PLAN_REVIEW",
     previousState: "PLAN",
-    ticket: state.ticket ? { ...state.ticket, risk } : state.ticket,
+    ticket: state.ticket ? { ...state.ticket, risk, lastPlanHash: planHash } : state.ticket,
   });
   appendEvent(dir, {
     rev: written.revision,
@@ -487,13 +502,16 @@ async function handleReportPlan(
     data: { planLength: planContent.length, risk },
   });
 
+  // Derive round/reviewer from existing history (correct after revise loops: ISS-035)
   const backends = state.config.reviewBackends;
-  const reviewer = nextReviewer([], backends);
-  const rounds = requiredRounds(risk);
+  const existingPlanReviews = state.reviews.plan;
+  const roundNum = existingPlanReviews.length + 1;
+  const reviewer = nextReviewer(existingPlanReviews, backends);
+  const minRounds = requiredRounds(risk);
 
   return guideResult(written, "PLAN_REVIEW", {
     instruction: [
-      `# Plan Review — Round 1 of ${rounds} minimum`,
+      `# Plan Review — Round ${roundNum} of ${Math.max(minRounds, roundNum)} minimum`,
       "",
       `Run a plan review using **${reviewer}**.`,
       "",
@@ -503,7 +521,7 @@ async function handleReportPlan(
       "",
       "When done, call `claudestory_autonomous_guide` with:",
       '```json',
-      `{ "sessionId": "${state.sessionId}", "action": "report", "report": { "completedAction": "plan_review_round", "verdict": "<approve|revise|reject>", "findings": [...] } }`,
+      `{ "sessionId": "${state.sessionId}", "action": "report", "report": { "completedAction": "plan_review_round", "verdict": "<approve|revise|request_changes|reject>", "findings": [...] } }`,
       '```',
     ].join("\n"),
     reminders: ["Report the exact verdict and findings from the reviewer."],
@@ -547,8 +565,20 @@ async function handleReportPlanReview(
     (f) => f.severity === "critical" || f.severity === "major",
   );
 
+  // Guard contradictory approve + critical/major (ISS-035)
+  if (verdict === "approve" && hasCriticalOrMajor) {
+    return guideResult(state, "PLAN_REVIEW", {
+      instruction: "Contradictory review payload: verdict is 'approve' but critical/major findings are present. Re-run the review or correct the verdict.",
+      reminders: [],
+    });
+  }
+
+  // ISS-035: explicit verdict routing
+  const isRevise = verdict === "revise" || verdict === "request_changes";
+  const isReject = verdict === "reject";
+
   let nextState: WorkflowState;
-  if (verdict === "reject") {
+  if (isReject || isRevise) {
     nextState = "PLAN";
   } else if (verdict === "approve" || (!hasCriticalOrMajor && roundNum >= minRounds)) {
     nextState = "IMPLEMENT";
@@ -559,11 +589,18 @@ async function handleReportPlanReview(
     nextState = "PLAN_REVIEW";
   }
 
+  // reject: clear plan review history (new plan starts at round 1).
+  // revise: preserve history (revision continues the review thread).
+  // BOTH: keep lastPlanHash so fingerprint guard rejects unchanged resubmissions.
+  const reviewsForWrite = isReject
+    ? { ...state.reviews, plan: [] as typeof planReviews }
+    : { ...state.reviews, plan: planReviews };
+
   const written = writeSessionSync(dir, {
     ...state,
     state: nextState,
     previousState: "PLAN_REVIEW",
-    reviews: { ...state.reviews, plan: planReviews },
+    reviews: nextState === "PLAN" ? reviewsForWrite : { ...state.reviews, plan: planReviews },
   });
   appendEvent(dir, {
     rev: written.revision,
@@ -574,7 +611,9 @@ async function handleReportPlanReview(
 
   if (nextState === "PLAN") {
     return guideResult(written, "PLAN", {
-      instruction: "Plan was rejected. Revise and rewrite the plan, then call me with completedAction: \"plan_written\".",
+      instruction: isRevise
+        ? "Plan review requested revisions. Address the findings, revise your plan, then call me with completedAction: \"plan_written\"."
+        : "Plan was rejected. Write a new plan from scratch, then call me with completedAction: \"plan_written\".",
       reminders: [],
       transitionedFrom: "PLAN_REVIEW",
     });
@@ -698,10 +737,25 @@ async function handleReportCodeReview(
   // Check for PLAN redirect
   const planRedirect = findings.some((f) => f.recommendedNextState === "PLAN");
 
+  // Guard contradictory approve payloads (ISS-035)
+  if (verdict === "approve" && hasCriticalOrMajor) {
+    return guideResult(state, "CODE_REVIEW", {
+      instruction: "Contradictory review payload: verdict is 'approve' but critical/major findings are present. Re-run the review or correct the verdict.",
+      reminders: [],
+    });
+  }
+  if (verdict === "approve" && planRedirect) {
+    return guideResult(state, "CODE_REVIEW", {
+      instruction: "Contradictory review payload: verdict is 'approve' but findings recommend replanning. Re-run the review or correct the verdict.",
+      reminders: [],
+    });
+  }
+
   let nextState: WorkflowState;
-  if (verdict === "reject" && planRedirect) {
+  // planRedirect takes precedence for ANY non-approve verdict (ISS-035)
+  if (planRedirect && verdict !== "approve") {
     nextState = "PLAN";
-  } else if (verdict === "reject") {
+  } else if (verdict === "reject" || verdict === "revise" || verdict === "request_changes") {
     nextState = "IMPLEMENT";
   } else if (verdict === "approve" || (!hasCriticalOrMajor && roundNum >= minRounds)) {
     nextState = "FINALIZE";
@@ -709,6 +763,28 @@ async function handleReportCodeReview(
     nextState = "FINALIZE";
   } else {
     nextState = "CODE_REVIEW";
+  }
+
+  // CODE_REVIEW → PLAN: full reset — both plan and code will be redone
+  if (nextState === "PLAN") {
+    const planResetWritten = writeSessionSync(dir, {
+      ...state,
+      state: "PLAN",
+      previousState: "CODE_REVIEW",
+      reviews: { plan: [], code: [] },
+      ticket: state.ticket ? { ...state.ticket, realizedRisk: undefined } : state.ticket,
+    });
+    appendEvent(dir, {
+      rev: planResetWritten.revision,
+      type: "code_review",
+      timestamp: new Date().toISOString(),
+      data: { round: roundNum, verdict, findingCount: findings.length, redirectedTo: "PLAN" },
+    });
+    return guideResult(planResetWritten, "PLAN", {
+      instruction: "Code review recommends rethinking the approach. Write a new plan and call me with completedAction: \"plan_written\".",
+      reminders: [],
+      transitionedFrom: "CODE_REVIEW",
+    });
   }
 
   const written = writeSessionSync(dir, {
@@ -723,14 +799,6 @@ async function handleReportCodeReview(
     timestamp: new Date().toISOString(),
     data: { round: roundNum, verdict, findingCount: findings.length },
   });
-
-  if (nextState === "PLAN") {
-    return guideResult(written, "PLAN", {
-      instruction: "Code review recommends rethinking the approach. Revise the plan and call me with completedAction: \"plan_written\".",
-      reminders: [],
-      transitionedFrom: "CODE_REVIEW",
-    });
-  }
 
   if (nextState === "IMPLEMENT") {
     return guideResult(written, "IMPLEMENT", {
@@ -844,15 +912,34 @@ async function handleReportFinalize(
       });
     }
     if (checkpoint === "committed") {
-      return guideResult(state, "FINALIZE", {
-        instruction: "Commit was already recorded. Proceeding to completion.",
-        reminders: [],
+      // Already committed — skip to COMPLETE (don't re-enter FINALIZE loop: ISS-031)
+      const alreadyCommitted = writeSessionSync(dir, {
+        ...state,
+        state: "COMPLETE",
+        previousState: "FINALIZE",
       });
+      return handleReportComplete(root, dir, refreshLease(alreadyCommitted), { completedAction: "commit_done" });
     }
     const commitHash = report.commitHash;
     if (!commitHash) {
       return guideResult(state, "FINALIZE", {
         instruction: "Missing commitHash in report. Call me again with the commit hash.",
+        reminders: [],
+      });
+    }
+
+    // Validate commitHash matches actual HEAD and is a new commit (ISS-033)
+    const headResult = await gitHead(root);
+    const previousHead = state.git.expectedHead ?? state.git.initHead;
+    if (!headResult.ok || headResult.data.hash !== commitHash) {
+      return guideResult(state, "FINALIZE", {
+        instruction: `Commit hash mismatch: reported ${commitHash} but HEAD is ${headResult.ok ? headResult.data.hash : "unknown"}. Verify the commit succeeded and report the correct hash.`,
+        reminders: [],
+      });
+    }
+    if (previousHead && commitHash === previousHead) {
+      return guideResult(state, "FINALIZE", {
+        instruction: `No new commit detected: HEAD (${commitHash}) has not changed. Create a commit first, then report the new hash.`,
         reminders: [],
       });
     }
@@ -870,6 +957,11 @@ async function handleReportFinalize(
         ? [...state.completedTickets, completedTicket]
         : state.completedTickets,
       ticket: undefined,
+      git: {
+        ...state.git,
+        mergeBase: commitHash,
+        expectedHead: commitHash,
+      },
     };
 
     const written = writeSessionSync(dir, updated);
@@ -1343,4 +1435,13 @@ function readFileSafe(path: string): string {
   } catch {
     return "";
   }
+}
+
+/** DJB2 hash — sufficient for plan change detection (ISS-035). */
+function simpleHash(content: string): string {
+  let hash = 5381;
+  for (let i = 0; i < content.length; i++) {
+    hash = ((hash << 5) + hash + content.charCodeAt(i)) & 0xffffffff;
+  }
+  return hash.toString(36);
 }
