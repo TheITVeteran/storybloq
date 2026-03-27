@@ -12,11 +12,13 @@ export type WorkflowState =
   | "PLAN"
   | "PLAN_REVIEW"
   | "IMPLEMENT"
+  | "TEST"
   | "CODE_REVIEW"
   | "FINALIZE"
   | "COMPACT"
   | "HANDOVER"
   | "COMPLETE"
+  | "ISSUE_SWEEP"
   | "SESSION_END";
 
 // ---------------------------------------------------------------------------
@@ -29,9 +31,11 @@ const WORKING_STATES: ReadonlySet<string> = new Set([
   "PLAN",
   "PLAN_REVIEW",
   "IMPLEMENT",
+  "TEST",
   "CODE_REVIEW",
   "FINALIZE",
   "COMPACT",
+  "ISSUE_SWEEP",
 ]);
 
 const IDLE_STATES: ReadonlySet<string> = new Set([
@@ -138,9 +142,9 @@ export type StatusPayload = StatusPayloadActive | StatusPayloadInactive;
 export const WORKFLOW_STATES = [
   "INIT", "LOAD_CONTEXT", "PICK_TICKET",
   "PLAN", "PLAN_REVIEW",
-  "IMPLEMENT", "CODE_REVIEW",
+  "IMPLEMENT", "TEST", "CODE_REVIEW",
   "FINALIZE", "COMPACT",
-  "HANDOVER", "COMPLETE", "SESSION_END",
+  "HANDOVER", "COMPLETE", "ISSUE_SWEEP", "SESSION_END",
 ] as const;
 
 export const WorkflowStateSchema = z.enum(WORKFLOW_STATES);
@@ -355,6 +359,18 @@ export const SessionStateSchema = z.object({
     compactThreshold: z.string().default("high"),
     reviewBackends: z.array(z.string()).default(["codex", "agent"]),
   }).default({ maxTicketsPerSession: 3, compactThreshold: "high", reviewBackends: ["codex", "agent"] }),
+
+  // T-128: Resolved recipe (frozen at session start, survives compact/resume)
+  resolvedPipeline: z.array(z.string()).optional(),
+  resolvedPostComplete: z.array(z.string()).optional(),
+  resolvedRecipeId: z.string().optional(),
+  resolvedStages: z.record(z.record(z.unknown())).optional(),
+  resolvedDirtyFileHandling: z.string().optional(),
+  resolvedDefaults: z.object({
+    maxTicketsPerSession: z.number(),
+    compactThreshold: z.string(),
+    reviewBackends: z.array(z.string()),
+  }).optional(),
 }).passthrough();
 
 export type FullSessionState = z.infer<typeof SessionStateSchema>;

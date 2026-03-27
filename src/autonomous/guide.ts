@@ -30,6 +30,9 @@ import { assertTransition } from "./state-machine.js";
 import { evaluatePressure } from "./context-pressure.js";
 import { assessRisk, requiredRounds, nextReviewer } from "./review-depth.js";
 import { gitHead, gitStatus, gitMergeBase, gitDiffStat, gitDiffNames, gitDiffCachedNames, gitBlobHash } from "./git-inspector.js";
+import { resolveRecipe } from "./recipes/loader.js";
+import { getStage, findNextStage, findFirstPostComplete, type NextStageResult } from "./stages/registry.js";
+import { StageContext, isStageAdvance, type StageAdvance, type StageResult } from "./stages/types.js";
 
 import { loadProject } from "../core/project-loader.js";
 import { loadLatestSnapshot } from "../core/snapshot.js";
@@ -368,6 +371,13 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     }
   } catch { /* best-effort — use defaults */ }
 
+  // Resolve recipe into frozen pipeline configuration
+  const resolvedRecipe = resolveRecipe(recipe, {
+    maxTicketsPerSession: sessionConfig.maxTicketsPerSession,
+    compactThreshold: sessionConfig.compactThreshold,
+    reviewBackends: sessionConfig.reviewBackends,
+  });
+
   // Create session — wrapped in try/finally for cleanup on failure
   const session = createSession(root, recipe, wsId, sessionConfig);
   const dir = sessionDir(root, session.sessionId);
@@ -434,6 +444,17 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
           dirtyTrackedFiles: dirtyTracked,
           untrackedPaths,
         },
+      },
+      // T-128: Freeze resolved recipe for session lifetime (survives compact/resume)
+      resolvedPipeline: resolvedRecipe.pipeline,
+      resolvedPostComplete: resolvedRecipe.postComplete,
+      resolvedRecipeId: resolvedRecipe.id,
+      resolvedStages: resolvedRecipe.stages as Record<string, Record<string, unknown>>,
+      resolvedDirtyFileHandling: resolvedRecipe.dirtyFileHandling,
+      resolvedDefaults: {
+        maxTicketsPerSession: resolvedRecipe.defaults.maxTicketsPerSession,
+        compactThreshold: resolvedRecipe.defaults.compactThreshold,
+        reviewBackends: [...resolvedRecipe.defaults.reviewBackends],
       },
     };
 
@@ -557,6 +578,145 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline walker (T-128) — dispatches to registered WorkflowStage
+// ---------------------------------------------------------------------------
+
+/** Reconstruct a ResolvedRecipe from persisted session state fields. */
+function resolveRecipeFromState(state: FullSessionState): import("./stages/types.js").ResolvedRecipe {
+  const DEFAULT_PIPELINE = ["PICK_TICKET", "PLAN", "PLAN_REVIEW", "IMPLEMENT", "CODE_REVIEW", "FINALIZE", "COMPLETE"];
+  return {
+    id: state.resolvedRecipeId ?? state.recipe,
+    pipeline: state.resolvedPipeline ?? DEFAULT_PIPELINE,
+    postComplete: state.resolvedPostComplete ?? [],
+    stages: state.resolvedStages ?? {},
+    dirtyFileHandling: state.resolvedDirtyFileHandling ?? "block",
+    defaults: state.resolvedDefaults ?? {
+      maxTicketsPerSession: state.config.maxTicketsPerSession,
+      compactThreshold: state.config.compactThreshold,
+      reviewBackends: [...state.config.reviewBackends],
+    },
+  };
+}
+
+const MAX_AUTO_ADVANCE_DEPTH = 10;
+
+/** Process a StageAdvance result — handles advance/retry/back/goto. */
+async function processAdvance(
+  ctx: StageContext,
+  currentStage: import("./stages/types.js").WorkflowStage,
+  advance: StageAdvance,
+  depth = 0,
+): Promise<McpToolResult> {
+  if (depth >= MAX_AUTO_ADVANCE_DEPTH) {
+    return guideError(new Error(
+      `Auto-advance depth limit (${MAX_AUTO_ADVANCE_DEPTH}) exceeded at stage ${currentStage.id}. Possible cycle in enter() auto-advances.`,
+    ));
+  }
+
+  switch (advance.action) {
+    case "advance": {
+      const pipeline = ctx.state.resolvedPipeline ?? ctx.recipe.pipeline;
+      const next = findNextStage(pipeline, currentStage.id, ctx);
+
+      if (next.kind === "unregistered") {
+        // Hybrid dispatch: next pipeline stage not yet extracted — write transition
+        // and return instruction telling Claude to report back (switch will handle it)
+        assertTransition(currentStage.id as WorkflowState, next.id as WorkflowState);
+        ctx.writeState({ state: next.id, previousState: currentStage.id });
+        return guideResult(ctx.state, next.id, {
+          instruction: `Transitioned to ${next.id}. Report back to continue.`,
+          reminders: [],
+        });
+      }
+
+      if (next.kind === "exhausted") {
+        // Pipeline exhausted — check postComplete or route to HANDOVER
+        const postComplete = ctx.state.resolvedPostComplete ?? ctx.recipe.postComplete;
+        const post = findFirstPostComplete(postComplete, ctx);
+        if (post.kind === "found") {
+          assertTransition(currentStage.id as WorkflowState, post.stage.id as WorkflowState);
+          ctx.writeState({ state: post.stage.id, previousState: currentStage.id });
+          const enterResult = await post.stage.enter(ctx);
+          if (isStageAdvance(enterResult)) return processAdvance(ctx, post.stage, enterResult, depth + 1);
+          return guideResult(ctx.state, post.stage.id, enterResult);
+        }
+        if (post.kind === "unregistered") {
+          // PostComplete stage not yet extracted — delegate to legacy
+          assertTransition(currentStage.id as WorkflowState, post.id as WorkflowState);
+          ctx.writeState({ state: post.id, previousState: currentStage.id });
+          return guideResult(ctx.state, post.id, {
+            instruction: `Transitioned to ${post.id}. Report back to continue.`,
+            reminders: [],
+          });
+        }
+        // post.kind === "exhausted" — no postComplete, route to HANDOVER
+        const handoverStage = getStage("HANDOVER");
+        if (handoverStage) {
+          assertTransition(currentStage.id as WorkflowState, "HANDOVER");
+          ctx.writeState({ state: "HANDOVER", previousState: currentStage.id });
+          const enterResult = await handoverStage.enter(ctx);
+          if (isStageAdvance(enterResult)) return processAdvance(ctx, handoverStage, enterResult, depth + 1);
+          return guideResult(ctx.state, "HANDOVER", enterResult);
+        }
+        return guideError(new Error(`Pipeline exhausted at ${currentStage.id} with no HANDOVER stage`));
+      }
+
+      // next.kind === "found"
+      const nextStage = next.stage;
+      assertTransition(currentStage.id as WorkflowState, nextStage.id as WorkflowState);
+      ctx.writeState({ state: nextStage.id, previousState: currentStage.id });
+      const enterResult = "result" in advance && advance.result
+        ? advance.result
+        : await nextStage.enter(ctx);
+      if (isStageAdvance(enterResult)) return processAdvance(ctx, nextStage, enterResult, depth + 1);
+      return guideResult(ctx.state, nextStage.id, enterResult);
+    }
+    case "retry":
+      return guideResult(ctx.state, currentStage.id, {
+        instruction: advance.instruction,
+        reminders: advance.reminders ? [...advance.reminders] : [],
+      });
+    case "back":
+    case "goto": {
+      const target = advance.target;
+      const targetStage = getStage(target);
+      if (!targetStage) {
+        // Target not registered — write transition, delegate to legacy switch on next report
+        assertTransition(currentStage.id as WorkflowState, target as WorkflowState);
+        ctx.writeState({ state: target, previousState: currentStage.id });
+        return guideResult(ctx.state, target, {
+          instruction: `Transitioned to ${target}. Report back to continue.`,
+          reminders: [],
+        });
+      }
+      assertTransition(currentStage.id as WorkflowState, target as WorkflowState);
+      ctx.writeState({ state: target, previousState: currentStage.id });
+      const enterResult = "result" in advance && advance.result
+        ? advance.result
+        : await targetStage.enter(ctx);
+      if (isStageAdvance(enterResult)) return processAdvance(ctx, targetStage, enterResult, depth + 1);
+      return guideResult(ctx.state, target, enterResult);
+    }
+  }
+}
+
+/** Run a registered pipeline stage's report() method and process the result. */
+async function runPipelineStage(
+  root: string,
+  dir: string,
+  state: FullSessionState,
+  report: NonNullable<GuideInput["report"]>,
+  recipe: import("./stages/types.js").ResolvedRecipe,
+): Promise<McpToolResult> {
+  const stage = getStage(state.state);
+  if (!stage) return guideError(new Error(`Unknown stage: ${state.state}`));
+
+  const ctx = new StageContext(root, dir, state, recipe);
+  const advance = await stage.report(ctx, report);
+  return processAdvance(ctx, stage, advance);
+}
+
+// ---------------------------------------------------------------------------
 // report — advance state machine
 // ---------------------------------------------------------------------------
 
@@ -586,6 +746,14 @@ async function handleReport(root: string, args: GuideInput): Promise<McpToolResu
     ));
   }
 
+  // T-128: Try pipeline walker first (registered stages), fall back to switch
+  const registeredStage = getStage(currentState);
+  if (registeredStage) {
+    const recipe = resolveRecipeFromState(state);
+    return runPipelineStage(root, info.dir, state, report, recipe);
+  }
+
+  // Legacy switch — shrinks as stages are extracted in T-137/T-138
   switch (currentState) {
     case "PICK_TICKET":
       return handleReportPickTicket(root, info.dir, state, report);
@@ -603,6 +771,12 @@ async function handleReport(root: string, args: GuideInput): Promise<McpToolResu
       return handleReportComplete(root, info.dir, state, report);
     case "HANDOVER":
       return handleReportHandover(root, info.dir, state, report);
+    case "TEST":
+    case "ISSUE_SWEEP":
+      return guideError(new Error(
+        `Stage ${currentState} is not yet implemented. ` +
+        `Update the recipe to exclude this stage, or wait for T-124/T-123 to be deployed.`,
+      ));
     default:
       return guideError(new Error(`Cannot report at state ${currentState}`));
   }
@@ -1525,8 +1699,10 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       PLAN:         { state: "PLAN",        resetPlan: true,  resetCode: false },
       IMPLEMENT:    { state: "PLAN",        resetPlan: true,  resetCode: false },
       PLAN_REVIEW:  { state: "PLAN",        resetPlan: true,  resetCode: true  },
+      TEST:         { state: "IMPLEMENT",   resetPlan: false, resetCode: true  },  // T-128: tests invalidated by HEAD change
       CODE_REVIEW:  { state: "PLAN",        resetPlan: true,  resetCode: true  },
       FINALIZE:     { state: "IMPLEMENT",   resetPlan: false, resetCode: true  },
+      ISSUE_SWEEP:  { state: "PICK_TICKET", resetPlan: false, resetCode: false },  // T-128: post-complete, restart sweep
     };
     const mapping = recoveryMapping[resumeState] ?? { state: "PICK_TICKET", resetPlan: false, resetCode: false };
 

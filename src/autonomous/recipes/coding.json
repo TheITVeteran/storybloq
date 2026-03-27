@@ -1,6 +1,13 @@
 {
   "id": "coding",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "pipeline": ["PICK_TICKET", "PLAN", "PLAN_REVIEW", "IMPLEMENT", "CODE_REVIEW", "FINALIZE", "COMPLETE"],
+  "postComplete": [],
+  "stages": {
+    "PLAN_REVIEW": { "backends": ["codex", "agent"] },
+    "CODE_REVIEW": { "backends": ["codex", "agent"] }
+  },
+  "dirtyFileHandling": "block",
   "defaults": {
     "maxTicketsPerSession": 3,
     "compactThreshold": "high",
