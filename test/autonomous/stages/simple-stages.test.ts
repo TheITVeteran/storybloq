@@ -284,11 +284,8 @@ describe("CompleteStage", () => {
     expect(isStageAdvance(result)).toBe(true);
     if (isStageAdvance(result)) {
       const advance = result as Record<string, unknown>;
-      // CompleteStage routes to HANDOVER (or postComplete if enabled)
-      expect(["goto", "advance"]).toContain(advance.action);
-      if (advance.action === "goto" && advance.target) {
-        expect(["HANDOVER", "ISSUE_SWEEP"]).toContain(advance.target);
-      }
+      expect(advance.action).toBe("goto");
+      expect(advance.target).toBe("HANDOVER");
     }
   });
 
@@ -307,11 +304,8 @@ describe("CompleteStage", () => {
     const result = await stage.enter(ctx);
     expect(isStageAdvance(result)).toBe(true);
     if (isStageAdvance(result)) {
-      const advance = result as Record<string, unknown>;
-      expect(["goto", "advance"]).toContain(advance.action);
-      // Should NOT route to PICK_TICKET when cap is reached
-      if (advance.action === "goto" && advance.target) {
-        expect(advance.target).not.toBe("PICK_TICKET");
+      if (isStageAdvance(result) && result.action === "goto") {
+        expect((result as { target: string }).target).toBe("HANDOVER");
       }
     }
   });
