@@ -43,6 +43,80 @@ import {
 import type { CommandContext } from "../cli/types.js";
 
 // ---------------------------------------------------------------------------
+// Pending mutation recovery (ISS-024)
+// ---------------------------------------------------------------------------
+
+/**
+ * Recover from a pending project mutation (crash between project write and session clear).
+ * Called at the top of all entry points: handleReport, handleResume, handleCancel, handleStart.
+ * Idempotent: checks actual ticket state before applying.
+ */
+async function recoverPendingMutation(
+  dir: string,
+  state: FullSessionState,
+  root: string,
+): Promise<FullSessionState> {
+  const mutation = state.pendingProjectMutation;
+  if (!mutation || typeof mutation !== "object") return state;
+  const m = mutation as Record<string, unknown>;
+  if (m.type !== "ticket_update") return state; // only ticket_update supported in wave 3
+
+  const targetId = m.target as string;
+  const targetValue = m.value as string;
+  const expectedCurrent = m.expectedCurrent as string | undefined;
+  const postMutation = m.postMutation as Record<string, unknown> | undefined;
+
+  try {
+    const { withProjectLock, writeTicketUnlocked } = await import("../core/project-loader.js");
+    await withProjectLock(root, { strict: false }, async ({ state: projectState }) => {
+      const ticket = projectState.ticketByID(targetId);
+      if (!ticket) return;
+
+      if (ticket.status === targetValue) {
+        // Project write already succeeded — clear marker
+      } else if (expectedCurrent && ticket.status === expectedCurrent) {
+        // Replay the write
+        const updated = { ...ticket, status: targetValue as typeof ticket.status };
+        if (m.claimedBySession) {
+          (updated as Record<string, unknown>).claimedBySession = m.claimedBySession;
+        }
+        await writeTicketUnlocked(updated, root);
+      } else {
+        // Ticket in unexpected state — conflict
+        appendEvent(dir, {
+          rev: state.revision,
+          type: "mutation_conflict",
+          timestamp: new Date().toISOString(),
+          data: { targetId, expected: expectedCurrent, actual: ticket.status, transitionId: m.transitionId },
+        });
+        // Clear marker without applying postMutation
+        writeSessionSync(dir, { ...state, pendingProjectMutation: null });
+        return;
+      }
+    });
+  } catch {
+    // Lock/IO failure — leave marker for next attempt
+    return state;
+  }
+
+  // Apply postMutation if present and session not already in target state
+  const cleared: Record<string, unknown> = { ...state, pendingProjectMutation: null };
+  if (postMutation) {
+    const nextState = postMutation.nextSessionState as string | undefined;
+    if (nextState && state.state !== nextState) {
+      cleared.state = nextState;
+      cleared.previousState = state.state;
+      cleared.terminationReason = (postMutation.terminationReason as string) ?? null;
+      if (postMutation.clearTicket) {
+        cleared.ticket = undefined;
+      }
+    }
+  }
+
+  return writeSessionSync(dir, cleared as FullSessionState);
+}
+
+// ---------------------------------------------------------------------------
 // MCP result type (matches tools.ts)
 // ---------------------------------------------------------------------------
 
@@ -129,8 +203,11 @@ async function handleGuideInner(root: string, args: GuideInput): Promise<McpTool
 // ---------------------------------------------------------------------------
 
 async function handleStart(root: string, args: GuideInput): Promise<McpToolResult> {
-  // Check for existing active session
+  // ISS-024: recover pending mutations on existing sessions before checking
   const existing = findActiveSessionFull(root);
+  if (existing && !isLeaseExpired(existing.state)) {
+    await recoverPendingMutation(existing.dir, existing.state, root);
+  }
   if (existing && !isLeaseExpired(existing.state)) {
     // ISS-032: compactPending sessions always block with specific recovery instructions
     if (existing.state.compactPending) {
@@ -395,6 +472,10 @@ async function handleReport(root: string, args: GuideInput): Promise<McpToolResu
   if (!info) return guideError(new Error(`Session ${args.sessionId} not found`));
 
   let state = refreshLease(info.state);
+
+  // ISS-024: recover any pending mutation before processing
+  state = await recoverPendingMutation(info.dir, state, root);
+
   const currentState = state.state as WorkflowState;
   const report = args.report;
 
@@ -517,16 +598,20 @@ async function handleReportPlan(
   // Compute initial risk
   const risk = assessRisk(undefined, undefined);
 
-  // Update ticket to inprogress in .story/ (first durable work product)
+  // Update ticket to inprogress in .story/ with session ownership (ISS-024/ISS-027)
   if (state.ticket) {
     try {
       const { withProjectLock, writeTicketUnlocked } = await import("../core/project-loader.js");
       await withProjectLock(root, { strict: false }, async ({ state: projectState }) => {
         const ticket = projectState.ticketByID(state.ticket!.id);
-        if (ticket && ticket.status !== "inprogress") {
-          const updated = { ...ticket, status: "inprogress" as const };
-          await writeTicketUnlocked(updated, root);
-        }
+        if (!ticket) return;
+        const ticketClaim = (ticket as Record<string, unknown>).claimedBySession;
+        // Claim guard: only claim if open+unclaimed or already claimed by this session
+        if (ticket.status === "inprogress" && ticketClaim === state.sessionId) return; // idempotent
+        if (ticket.status !== "open" && ticket.status !== "inprogress") return; // can't claim non-open
+        if (ticketClaim && ticketClaim !== state.sessionId) return; // already claimed by another
+        const updated = { ...ticket, status: "inprogress" as const, claimedBySession: state.sessionId };
+        await writeTicketUnlocked(updated, root);
       });
     } catch {
       // Best-effort — don't block plan review if ticket update fails
@@ -892,6 +977,18 @@ async function handleReportFinalize(
       });
     }
 
+    // ISS-025: Overlap detection — block staging of pre-existing untracked files
+    const baselineUntracked = state.git.baseline?.untrackedPaths ?? [];
+    if (baselineUntracked.length > 0 && !report.overrideOverlap) {
+      const overlap = stagedResult.data.filter((f: string) => baselineUntracked.includes(f));
+      if (overlap.length > 0) {
+        return guideResult(state, "FINALIZE", {
+          instruction: `Pre-existing untracked files are staged: ${overlap.join(", ")}. Unstage them with \`git restore --staged ${overlap.join(" ")}\`, or report with overrideOverlap: true to proceed.`,
+          reminders: [],
+        });
+      }
+    }
+
     const written = writeSessionSync(dir, { ...state, finalizeCheckpoint: "staged" });
 
     return guideResult(written, "FINALIZE", {
@@ -1187,6 +1284,14 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
 
   const info = findSessionById(root, args.sessionId);
   if (!info) return guideError(new Error(`Session ${args.sessionId} not found`));
+
+  // ISS-024: recover any pending mutation before processing
+  const recoveredState = await recoverPendingMutation(info.dir, info.state, root);
+  if (recoveredState !== info.state) {
+    // Mutation was recovered — re-read to get consistent state
+    const reread = findSessionById(root, args.sessionId);
+    if (reread) Object.assign(info, reread);
+  }
 
   // Guard: only resume from COMPACT state
   if (info.state.state !== "COMPACT") {
@@ -1495,22 +1600,57 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
   const info = findSessionById(root, args.sessionId!);
   if (!info) return guideError(new Error(`Session ${args.sessionId} not found`));
 
-  const written = writeSessionSync(info.dir, {
-    ...info.state,
+  // ISS-024: recover any pending mutation before cancel
+  await recoverPendingMutation(info.dir, info.state, root);
+  // Re-read state after recovery
+  const cancelInfo = findSessionById(root, args.sessionId!) ?? info;
+
+  // ISS-027: Release ticket claim if session owns it
+  let ticketReleased = false;
+  let ticketConflict = false;
+  const ticketId = cancelInfo.state.ticket?.id;
+  if (ticketId) {
+    try {
+      const { withProjectLock, writeTicketUnlocked } = await import("../core/project-loader.js");
+      await withProjectLock(root, { strict: false }, async ({ state: projectState }) => {
+        const ticket = projectState.ticketByID(ticketId);
+        if (ticket && ticket.status === "inprogress") {
+          const ticketClaim = (ticket as Record<string, unknown>).claimedBySession;
+          if (!ticketClaim || ticketClaim === cancelInfo.state.sessionId) {
+            await writeTicketUnlocked({ ...ticket, status: "open" as const, claimedBySession: null }, root);
+            ticketReleased = true;
+          } else {
+            ticketConflict = true;
+          }
+        }
+      });
+    } catch {
+      // Best-effort — session ends regardless, ticket may remain inprogress
+    }
+  }
+
+  const written = writeSessionSync(cancelInfo.dir, {
+    ...cancelInfo.state,
     state: "SESSION_END",
-    previousState: info.state.state,
+    previousState: cancelInfo.state.state,
     status: "completed",
     terminationReason: "cancelled",
     compactPending: false,
     compactPreparedAt: null,
     resumeBlocked: false,
+    ticket: undefined,
   });
 
-  appendEvent(info.dir, {
+  appendEvent(cancelInfo.dir, {
     rev: written.revision,
     type: "cancelled",
     timestamp: new Date().toISOString(),
-    data: { previousState: info.state.state },
+    data: {
+      previousState: cancelInfo.state.state,
+      ticketId: ticketId ?? null,
+      ticketReleased,
+      ticketConflict,
+    },
   });
 
   return {

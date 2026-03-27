@@ -359,6 +359,7 @@ export interface GuideReportInput {
   readonly verdict?: string;
   readonly findings?: readonly Finding[];
   readonly reviewerSessionId?: string;
+  readonly overrideOverlap?: boolean;
   readonly notes?: string;
 }
 
