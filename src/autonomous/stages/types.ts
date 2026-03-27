@@ -161,6 +161,38 @@ export class StageContext {
     this.writeState({ filedDeferrals: filed, pendingDeferrals: remaining } as Partial<FullSessionState>);
     return remaining.length === 0;
   }
+
+  /**
+   * Queue deferred review findings for issue creation.
+   * Persists to pendingDeferrals (crash-safe), then attempts to drain.
+   */
+  async fileDeferredFindings(
+    findings: readonly { severity: string; category: string; description: string; disposition: string }[],
+    reviewKind: "plan" | "code",
+  ): Promise<void> {
+    const deferred = findings.filter(f => f.disposition === "deferred" && f.severity !== "suggestion");
+    if (deferred.length === 0) return;
+
+    const pending = [...(this._state.pendingDeferrals ?? [])];
+    for (const f of deferred) {
+      const fp = djb2Hash(`${this._state.ticket?.id ?? ""}:${reviewKind}:${f.severity}:${f.category}:${f.description}`);
+      if ((this._state.filedDeferrals ?? []).some(d => d.fingerprint === fp)) continue;
+      if (pending.some(d => d.fingerprint === fp)) continue;
+      pending.push({ fingerprint: fp, severity: f.severity, category: f.category, description: f.description, reviewKind });
+    }
+
+    this.writeState({ pendingDeferrals: pending } as Partial<FullSessionState>);
+    await this.drainDeferrals();
+  }
+}
+
+/** DJB2 hash — same algorithm as guide.ts simpleHash. */
+function djb2Hash(content: string): string {
+  let hash = 5381;
+  for (let i = 0; i < content.length; i++) {
+    hash = ((hash << 5) + hash + content.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16);
 }
 
 // ---------------------------------------------------------------------------
