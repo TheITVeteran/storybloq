@@ -20,13 +20,14 @@ export class IssueSweepStage implements WorkflowStage {
     return !issueConfig?.enabled;
   }
 
-  async enter(ctx: StageContext): Promise<StageResult> {
+  async enter(ctx: StageContext): Promise<StageResult | StageAdvance> {
     const { state: projectState } = await ctx.loadProject();
     const allIssues = projectState.issues.filter(i => i.status === "open");
 
     if (allIssues.length === 0) {
-      // No open issues — auto-advance
-      return { action: "advance" } as StageAdvance;
+      // No open issues — goto HANDOVER directly (not advance, which would
+      // re-enter ISSUE_SWEEP via findFirstPostComplete and loop until depth limit)
+      return { action: "goto", target: "HANDOVER" };
     }
 
     // Partition: session-created first (matched by filedDeferrals fingerprints)

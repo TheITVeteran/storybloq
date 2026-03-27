@@ -778,8 +778,8 @@ async function runPipelineStage(
   if (!stage) {
     return guideError(new Error(
       `Stage "${state.state}" is not registered. ` +
-      `If this is TEST or ISSUE_SWEEP, update the recipe to exclude the stage or wait for T-124/T-123. ` +
-      `Otherwise, this is a bug — the session state references a stage that does not exist.`,
+      `The session state references a stage that does not exist in the registry. ` +
+      `This is likely a bug or a session from a newer version.`,
     ));
   }
 
