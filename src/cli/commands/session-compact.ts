@@ -188,3 +188,73 @@ export async function handleSessionClearCompact(root: string, sessionId?: string
     return `Session ${info.state.sessionId} ended (unrecoverable — invalid preCompactState: ${preCompactState ?? "null"}). Run "start" for a new session.`;
   });
 }
+
+// ---------------------------------------------------------------------------
+// session stop (ISS-036: admin stop for wedged sessions)
+// ---------------------------------------------------------------------------
+
+/**
+ * Admin command to cleanly stop an active session. Releases ticket claim,
+ * clears compact metadata, writes SESSION_END with admin_recovery.
+ * CLI-only (not MCP) — autonomous agent cannot invoke.
+ */
+export async function handleSessionStop(root: string, sessionId?: string): Promise<string> {
+  return withSessionLock(root, async () => {
+    let info: ActiveSessionInfo | null = null;
+
+    if (sessionId) {
+      info = findSessionById(root, sessionId);
+      if (!info) throw new Error(`Session ${sessionId} not found`);
+    } else {
+      info = findActiveSessionFull(root);
+      if (!info) throw new Error("No active session found");
+    }
+
+    if (info.state.status !== "active") {
+      throw new Error(`Session ${info.state.sessionId} is not active (status: ${info.state.status})`);
+    }
+
+    // Release ticket claim (best-effort, same as cancel)
+    const ticketId = info.state.ticket?.id;
+    let ticketReleased = false;
+    if (ticketId) {
+      try {
+        const { withProjectLock, writeTicketUnlocked } = await import("../../core/project-loader.js");
+        await withProjectLock(root, { strict: false }, async ({ state: projectState }) => {
+          const ticket = projectState.ticketByID(ticketId);
+          if (ticket && ticket.status === "inprogress") {
+            const claim = (ticket as Record<string, unknown>).claimedBySession;
+            if (!claim || claim === info!.state.sessionId) {
+              await writeTicketUnlocked({ ...ticket, status: "open" as const, claimedBySession: null }, root);
+              ticketReleased = true;
+            }
+          }
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // Write SESSION_END
+    const written = writeSessionSync(info.dir, {
+      ...info.state,
+      state: "SESSION_END",
+      previousState: info.state.state,
+      status: "completed" as const,
+      terminationReason: "admin_recovery",
+      compactPending: false,
+      compactPreparedAt: null,
+      resumeBlocked: false,
+      preCompactState: null,
+      resumeFromRevision: null,
+      ticket: undefined,
+    });
+
+    appendEvent(info.dir, {
+      rev: written.revision,
+      type: "admin_stop",
+      timestamp: new Date().toISOString(),
+      data: { previousState: info.state.state, ticketId: ticketId ?? null, ticketReleased },
+    });
+
+    return `Session ${info.state.sessionId} stopped.${ticketReleased ? ` Ticket ${ticketId} released to open.` : ticketId ? ` Ticket ${ticketId} may need manual cleanup.` : ""}`;
+  });
+}

@@ -124,6 +124,84 @@ async function recoverPendingMutation(
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Deferred finding filing (ISS-037)
+// ---------------------------------------------------------------------------
+
+const SEVERITY_MAP: Record<string, string> = {
+  critical: "critical",
+  major: "high",
+  minor: "medium",
+};
+
+/**
+ * File issues for deferred findings. Called after review round is validated and written.
+ * Adds to pendingDeferrals first (durable), then attempts to file, moves to filedDeferrals on success.
+ */
+async function fileDeferredFindings(
+  root: string,
+  dir: string,
+  state: FullSessionState,
+  findings: readonly { severity: string; category: string; description: string; disposition: string }[],
+  reviewKind: "plan" | "code",
+): Promise<FullSessionState> {
+  const deferred = findings.filter(f => f.disposition === "deferred" && f.severity !== "suggestion");
+  if (deferred.length === 0) return state;
+
+  const pending = [...(state.pendingDeferrals ?? [])];
+  for (const f of deferred) {
+    const fp = simpleHash(`${state.ticket?.id ?? ""}:${reviewKind}:${f.severity}:${f.category}:${f.description}`);
+    if ((state.filedDeferrals ?? []).some(d => d.fingerprint === fp)) continue;
+    if (pending.some(d => d.fingerprint === fp)) continue;
+    pending.push({ fingerprint: fp, severity: f.severity, category: f.category, description: f.description, reviewKind });
+  }
+
+  let updated = { ...state, pendingDeferrals: pending } as FullSessionState;
+  updated = await drainPendingDeferrals(root, dir, updated);
+  return updated;
+}
+
+/**
+ * Attempt to file all pending deferrals. Called on handleReport, handleResume, handleReportHandover, session stop.
+ */
+async function drainPendingDeferrals(
+  root: string,
+  dir: string,
+  state: FullSessionState,
+): Promise<FullSessionState> {
+  const pending = [...(state.pendingDeferrals ?? [])];
+  if (pending.length === 0) return state;
+
+  const filed = [...(state.filedDeferrals ?? [])];
+  const remaining: typeof pending = [];
+
+  for (const entry of pending) {
+    try {
+      const { handleIssueCreate } = await import("../cli/commands/issue.js");
+      const severity = SEVERITY_MAP[entry.severity] ?? "medium";
+      const title = `[${entry.category}] ${entry.description.slice(0, 80)}`;
+      const result = await handleIssueCreate(
+        { title, severity, impact: entry.description, components: ["autonomous"], relatedTickets: [], location: [] },
+        "json",
+        root,
+      );
+      // Extract issue ID from output
+      const match = result.output?.match(/ISS-\d+/);
+      if (match) {
+        filed.push({ fingerprint: entry.fingerprint, issueId: match[0] });
+      } else {
+        remaining.push(entry);
+      }
+    } catch {
+      remaining.push(entry);
+    }
+  }
+
+  const updated = { ...state, filedDeferrals: filed, pendingDeferrals: remaining };
+  return writeSessionSync(dir, updated as FullSessionState);
+}
+
+// ---------------------------------------------------------------------------
 // MCP result type (matches tools.ts)
 // ---------------------------------------------------------------------------
 
@@ -485,6 +563,9 @@ async function handleReport(root: string, args: GuideInput): Promise<McpToolResu
   // ISS-024: recover any pending mutation before processing
   state = await recoverPendingMutation(info.dir, state, root);
 
+  // ISS-037: retry pending deferrals from previous calls
+  state = await drainPendingDeferrals(root, info.dir, state);
+
   const currentState = state.state as WorkflowState;
   const report = args.report;
 
@@ -762,6 +843,9 @@ async function handleReportPlanReview(
     data: { round: roundNum, verdict, findingCount: findings.length },
   });
 
+  // ISS-037: file deferred findings after state is durably written
+  await fileDeferredFindings(root, dir, written, findings, "plan");
+
   if (nextState === "PLAN") {
     return guideResult(written, "PLAN", {
       instruction: isRevise
@@ -837,17 +921,28 @@ async function handleReportImplement(
     data: { realizedRisk },
   });
 
+  // ISS-038: Explicit diff instruction with mergeBase
+  const diffCommand = mergeBase
+    ? `\`git diff ${mergeBase}\``
+    : `\`git diff HEAD\` AND \`git ls-files --others --exclude-standard\``;
+  const diffReminder = mergeBase
+    ? `Run: git diff ${mergeBase} — pass FULL output to reviewer.`
+    : "Run: git diff HEAD + git ls-files --others --exclude-standard — pass FULL output to reviewer.";
+
   return guideResult(written, "CODE_REVIEW", {
     instruction: [
       `# Code Review — Round 1 of ${rounds} minimum`,
       "",
       `Realized risk: **${realizedRisk}**${realizedRisk !== state.ticket?.risk ? ` (was ${state.ticket?.risk})` : ""}.`,
       "",
-      `Run a code review using **${reviewer}**. Capture the git diff and pass it to the reviewer.`,
+      `Capture the diff with: ${diffCommand}`,
       "",
+      "**IMPORTANT:** Pass the FULL unified diff output to the reviewer. Do NOT summarize, compress, or truncate the diff.",
+      "",
+      `Run a code review using **${reviewer}**.`,
       "When done, report verdict and findings.",
     ].join("\n"),
-    reminders: ["Capture diff with `git diff` and pass to reviewer."],
+    reminders: [diffReminder, "Do NOT compress or summarize the diff."],
     transitionedFrom: "IMPLEMENT",
   });
 }
@@ -953,6 +1048,9 @@ async function handleReportCodeReview(
     data: { round: roundNum, verdict, findingCount: findings.length },
   });
 
+  // ISS-037: file deferred findings after state is durably written
+  await fileDeferredFindings(root, dir, written, findings, "code");
+
   if (nextState === "IMPLEMENT") {
     return guideResult(written, "IMPLEMENT", {
       instruction: "Code review requested changes. Fix the issues and call me with completedAction: \"implementation_done\".",
@@ -980,8 +1078,12 @@ async function handleReportCodeReview(
   // Stay in CODE_REVIEW
   const reviewer = nextReviewer(codeReviews, backends);
   return guideResult(written, "CODE_REVIEW", {
-    instruction: `Code review round ${roundNum} found issues. Fix them and re-review with **${reviewer}**.`,
-    reminders: [],
+    instruction: [
+      `Code review round ${roundNum} found issues. Fix them and re-review with **${reviewer}**.`,
+      "",
+      `Capture diff with: ${state.git.mergeBase ? `\`git diff ${state.git.mergeBase}\`` : "`git diff HEAD`"}. Pass FULL output — do NOT compress or summarize.`,
+    ].join("\n"),
+    reminders: ["Pass FULL diff output to reviewer. Do NOT compress or summarize."],
   });
 }
 
@@ -1299,6 +1401,10 @@ async function handleReportHandover(
     } catch { /* truly best-effort */ }
   }
 
+  // ISS-037: final drain of pending deferrals before session end
+  state = await drainPendingDeferrals(root, dir, state);
+  const hasUnfiled = (state.pendingDeferrals ?? []).length > 0;
+
   // ISS-032: handover always ends session. Compact-continue removed — hooks handle compaction.
   const written = writeSessionSync(dir, {
     ...state,
@@ -1306,6 +1412,7 @@ async function handleReportHandover(
     previousState: "HANDOVER",
     status: "completed",
     terminationReason: "normal",
+    deferralsUnfiled: hasUnfiled,
   });
 
   appendEvent(dir, {
@@ -1431,7 +1538,8 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       finalizeCheckpoint: null,
       reviews: recoveryReviews,
       ticket: recoveryTicket,
-      contextPressure: { ...info.state.contextPressure, compactionCount: (info.state.contextPressure?.compactionCount ?? 0) + 1 },
+      guideCallCount: 0,
+      contextPressure: { ...info.state.contextPressure, guideCallCount: 0, compactionCount: (info.state.contextPressure?.compactionCount ?? 0) + 1 },
       git: { ...info.state.git, expectedHead: headResult.data.hash, mergeBase: headResult.data.hash },
     });
 
@@ -1522,6 +1630,12 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
   }
 
   // Branch A: HEAD matches — normal resume
+  // ISS-036c: reset guideCallCount after compact to prevent false critical pressure
+  const resumePressure = {
+    ...info.state.contextPressure,
+    guideCallCount: 0,
+    compactionCount: (info.state.contextPressure?.compactionCount ?? 0) + 1,
+  };
   const written = writeSessionSync(info.dir, {
     ...refreshLease(info.state),
     state: resumeState,
@@ -1530,7 +1644,8 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
     compactPending: false,
     compactPreparedAt: null,
     resumeBlocked: false,
-    contextPressure: { ...info.state.contextPressure, compactionCount: (info.state.contextPressure?.compactionCount ?? 0) + 1 },
+    guideCallCount: 0,
+    contextPressure: { ...resumePressure, level: evaluatePressure({ ...info.state, guideCallCount: 0, contextPressure: resumePressure } as FullSessionState) },
   });
 
   // If resuming at PICK_TICKET, load candidates and give directive instructions
@@ -1654,6 +1769,13 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
   const info = findSessionById(root, args.sessionId!);
   if (!info) return guideError(new Error(`Session ${args.sessionId} not found`));
 
+  // ISS-036: Cancel guard — coding sessions cannot be cancelled via MCP
+  if (info.state.recipe === "coding") {
+    return guideError(new Error(
+      "Cannot cancel a coding session. Complete the current ticket and write a handover to end the session.",
+    ));
+  }
+
   // ISS-024: recover any pending mutation before cancel
   await recoverPendingMutation(info.dir, info.state, root);
   // Re-read state after recovery
@@ -1769,7 +1891,7 @@ function guideResult(
     `**Ticket:** ${summary.ticket}`,
     `**Risk:** ${summary.risk}`,
     `**Completed:** ${summary.completed.length > 0 ? summary.completed.join(", ") : "none"}`,
-    `**Pressure:** ${summary.contextPressure}`,
+    `**Tickets done:** ${summary.completed.length}`,
     summary.branch ? `**Branch:** ${summary.branch}` : "",
     output.contextAdvice !== "ok" ? `**Context:** ${output.contextAdvice}` : "",
     output.reminders.length > 0 ? `\n**Reminders:**\n${output.reminders.map((r) => `- ${r}`).join("\n")}` : "",

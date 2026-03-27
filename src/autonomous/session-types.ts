@@ -182,7 +182,7 @@ export interface Finding {
   readonly severity: "critical" | "major" | "minor" | "suggestion";
   readonly category: string;
   readonly description: string;
-  readonly disposition: "open" | "addressed" | "contested";
+  readonly disposition: "open" | "addressed" | "contested" | "deferred";
   readonly recommendedNextState?: "PLAN" | "IMPLEMENT";
 }
 
@@ -323,6 +323,20 @@ export const SessionStateSchema = z.object({
 
   // Session termination
   terminationReason: z.enum(["normal", "cancelled", "admin_recovery"]).nullable().default(null),
+
+  // ISS-037: Deferred finding tracking
+  filedDeferrals: z.array(z.object({
+    fingerprint: z.string(),
+    issueId: z.string(),
+  })).default([]),
+  pendingDeferrals: z.array(z.object({
+    fingerprint: z.string(),
+    severity: z.string(),
+    category: z.string(),
+    description: z.string(),
+    reviewKind: z.enum(["plan", "code"]),
+  })).default([]),
+  deferralsUnfiled: z.boolean().default(false),
 
   // Session metadata
   waitingForRetry: z.boolean().default(false),
