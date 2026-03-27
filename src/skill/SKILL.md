@@ -13,6 +13,9 @@ claudestory tracks tickets, issues, roadmap, and handovers in a `.story/` direct
 
 - `/story` → full context load (default, see Step 2 below)
 - `/story auto` → start autonomous mode (see Autonomous Mode below)
+- `/story review T-XXX` → start review mode for a ticket (see Tiered Access below)
+- `/story plan T-XXX` → start plan mode for a ticket (see Tiered Access below)
+- `/story guided T-XXX` → start guided mode for a ticket (see Tiered Access below)
 - `/story handover` → draft a session handover. Summarize the session's work, then call `claudestory_handover_create` with the drafted content and a descriptive slug
 - `/story snapshot` → save project state (call `claudestory_snapshot` MCP tool)
 - `/story export` → export project for sharing. Ask the user whether to export the current phase or the full project, then call `claudestory_export` with either `phase` or `all` set
@@ -285,6 +288,45 @@ List, get, and update notes via MCP: `claudestory_note_list`, `claudestory_note_
 **If the guide says to compact:** Call `claudestory_autonomous_guide` with `action: "pre_compact"`, then run `/compact`, then call with `action: "resume"`.
 
 **If something goes wrong:** Call `claudestory_autonomous_guide` with `action: "cancel"` to cleanly end the session.
+
+## Tiered Access — Review, Plan, Guided Modes
+
+The autonomous guide supports four execution tiers. Same guide, same handlers, different entry/exit points.
+
+### `/story review T-XXX`
+
+"I wrote code for T-XXX, review it." Enters at CODE_REVIEW, loops review rounds, exits on approval.
+
+1. Call `claudestory_autonomous_guide` with `{ "sessionId": null, "action": "start", "mode": "review", "ticketId": "T-XXX" }`
+2. The guide enters CODE_REVIEW — follow its diff capture and review instructions
+3. On approve: session ends automatically. On revise/reject: fix code, re-review
+4. After approval, you can proceed to commit — the guide does NOT auto-commit in review mode
+
+**Note:** Review mode relaxes git constraints — dirty working tree is allowed since the user has code ready for review.
+
+### `/story plan T-XXX`
+
+"Help me plan T-XXX." Enters at PLAN, runs PLAN_REVIEW rounds, exits on approval.
+
+1. Call `claudestory_autonomous_guide` with `{ "sessionId": null, "action": "start", "mode": "plan", "ticketId": "T-XXX" }`
+2. The guide enters PLAN — write the implementation plan as a markdown file
+3. On plan review approve: session ends automatically. On revise/reject: revise plan, re-review
+4. The approved plan is saved in `.story/sessions/<id>/plan.md`
+
+### `/story guided T-XXX`
+
+"Do T-XXX end to end with review." Full pipeline for a single ticket: PLAN → PLAN_REVIEW → IMPLEMENT → CODE_REVIEW → FINALIZE → COMPLETE → HANDOVER → SESSION_END.
+
+1. Call `claudestory_autonomous_guide` with `{ "sessionId": null, "action": "start", "mode": "guided", "ticketId": "T-XXX" }`
+2. Follow every instruction exactly, calling the guide back after each step
+3. Session ends automatically after the single ticket is complete
+
+**Guided vs Auto:** Guided mode forces `maxTicketsPerSession: 1` and exits after the ticket. Auto mode loops until all tickets are done or the session limit is reached.
+
+### All tiered modes:
+- Require a `ticketId` — no ad-hoc review without a ticket in V1
+- Use the same review process as auto mode (same backends, same adaptive depth)
+- Can be cancelled with `action: "cancel"` at any point
 
 ## Command & Tool Reference
 
