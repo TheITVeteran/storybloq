@@ -186,10 +186,18 @@ async function drainPendingDeferrals(
         "json",
         root,
       );
-      // Extract issue ID from output
-      const match = result.output?.match(/ISS-\d+/);
-      if (match) {
-        filed.push({ fingerprint: entry.fingerprint, issueId: match[0] });
+      // Extract issue ID from JSON output
+      let issueId: string | undefined;
+      try {
+        const parsed = JSON.parse(result.output ?? "");
+        issueId = parsed?.data?.id;
+      } catch {
+        // Fallback: regex match
+        const match = result.output?.match(/ISS-\d+/);
+        issueId = match?.[0];
+      }
+      if (issueId) {
+        filed.push({ fingerprint: entry.fingerprint, issueId });
       } else {
         remaining.push(entry);
       }
@@ -1452,10 +1460,12 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
   // ISS-024: recover any pending mutation before processing
   const recoveredState = await recoverPendingMutation(info.dir, info.state, root);
   if (recoveredState !== info.state) {
-    // Mutation was recovered — re-read to get consistent state
     const reread = findSessionById(root, args.sessionId);
     if (reread) Object.assign(info, reread);
   }
+
+  // ISS-037: drain pending deferrals from before compact
+  await drainPendingDeferrals(root, info.dir, info.state);
 
   // Guard: only resume from COMPACT state
   if (info.state.state !== "COMPACT") {

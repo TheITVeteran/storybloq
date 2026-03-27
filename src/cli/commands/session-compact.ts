@@ -233,7 +233,8 @@ export async function handleSessionStop(root: string, sessionId?: string): Promi
       } catch { /* best-effort */ }
     }
 
-    // Flag unfiled deferrals (don't attempt drain — admin stop should be fast)
+    // Flag unfiled deferrals — drain is in guide.ts (not importable from CLI)
+    // The deferralsUnfiled flag signals that manual issue filing is needed
     const hasUnfiledDeferrals = (info.state.pendingDeferrals ?? []).length > 0;
 
     // Write SESSION_END
