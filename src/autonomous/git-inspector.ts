@@ -110,7 +110,21 @@ export async function gitStash(cwd: string, message: string): Promise<GitResult<
 
   // Capture the commit hash of the stash we just created (it's at stash@{0} right now)
   const hashResult = await git(cwd, ["rev-parse", "stash@{0}"], (out) => out.trim());
-  if (!hashResult.ok) return { ok: false, reason: "stash_hash_failed", message: "Stash created but could not capture commit hash" };
+  if (!hashResult.ok) {
+    // Stash was created but we can't identify it — try to find by message, or pop it to restore workspace
+    const listResult = await git(cwd, ["stash", "list", "--format=%gd %s"], (out) =>
+      out.split("\n").filter(l => l.includes(message)),
+    );
+    if (listResult.ok && listResult.data.length > 0) {
+      // Found by message — extract ref from first match
+      const ref = listResult.data[0]!.split(" ")[0]!;
+      const refHash = await git(cwd, ["rev-parse", ref], (out) => out.trim());
+      if (refHash.ok) return { ok: true, data: refHash.data };
+    }
+    // Can't identify — pop to restore workspace so we don't orphan
+    await git(cwd, ["stash", "pop"], () => undefined);
+    return { ok: false, reason: "stash_hash_failed", message: "Stash created but could not capture commit hash. Stash was popped to restore workspace." };
+  }
 
   return { ok: true, data: hashResult.data };
 }
@@ -132,8 +146,8 @@ export async function gitStashPop(cwd: string, commitHash?: string): Promise<Git
     }),
   );
   if (!listResult.ok) {
-    // Fallback: try popping stash@{0}
-    return git(cwd, ["stash", "pop"], () => undefined);
+    // Cannot list stashes — do NOT fall back to git stash pop (might pop wrong entry)
+    return { ok: false, reason: "stash_list_failed", message: `Cannot list stash entries to find ${commitHash}. Run \`git stash list\` and pop manually.` };
   }
 
   const match = listResult.data.find(e => e.hash === commitHash);

@@ -500,7 +500,12 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         }));
         const exitCode = "exitCode" in result ? (result.exitCode as number) : 0;
         const output = ("stdout" in result ? String(result.stdout) : "").slice(-500);
-        updated = { ...updated, testBaseline: { exitCode, passCount: 0, failCount: 0, summary: output } };
+        // Parse pass/fail counts from output (e.g. "Tests: 10 passed, 2 failed" or "X passed (Y)")
+        const passMatch = output.match(/(\d+)\s*pass/i);
+        const failMatch = output.match(/(\d+)\s*fail/i);
+        const passCount = passMatch ? parseInt(passMatch[1]!, 10) : -1;  // -1 = uncaptured
+        const failCount = failMatch ? parseInt(failMatch[1]!, 10) : -1;
+        updated = { ...updated, testBaseline: { exitCode, passCount, failCount, summary: output } };
       } catch {
         // Non-blocking — if baseline capture fails, tests still run during TEST stage
       }

@@ -69,9 +69,9 @@ export class TestStage implements WorkflowStage {
       const failMatch = notes.match(/(\d+)\s*fail/i);
       const currentFails = failMatch ? parseInt(failMatch[1]!, 10) : undefined;
       // Only auto-advance if we can confirm failures aren't worse, or if
-      // baseline has no fail count data (passCount/failCount both 0 = uncaptured)
-      const baselineUncaptured = baseline.passCount === 0 && baseline.failCount === 0;
-      if (baselineUncaptured || (currentFails !== undefined && baseline.failCount > 0 && currentFails <= baseline.failCount)) {
+      // baseline has no fail count data (passCount/failCount = -1 = uncaptured)
+      const baselineUncaptured = baseline.failCount < 0;
+      if (baselineUncaptured || (currentFails !== undefined && baseline.failCount >= 0 && currentFails <= baseline.failCount)) {
         ctx.appendEvent("tests_preexisting_failures", { baselineExitCode: baseline.exitCode, baselineFails: baseline.failCount, currentFails, notes: notes.slice(0, 200) });
         return { action: "advance" };
       }
