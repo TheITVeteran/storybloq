@@ -842,7 +842,8 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
   }
 
   // ISS-037: drain pending deferrals from before compact
-  await drainPendingDeferrals(root, info.dir, info.state);
+  // Must capture return value — subsequent writes spread info.state as base
+  info = { ...info, state: await drainPendingDeferrals(root, info.dir, info.state) };
 
   // Guard: only resume from COMPACT state
   if (info.state.state !== "COMPACT") {

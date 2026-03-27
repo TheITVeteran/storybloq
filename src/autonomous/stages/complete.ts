@@ -58,6 +58,9 @@ export class CompleteStage implements WorkflowStage {
         ctx.writeState({ pipelinePhase: "postComplete" as const });
         return { action: "goto", target: postResult.stage.id };
       }
+      // "unregistered" — postComplete stage not available (future stage not deployed).
+      // "exhausted" — no enabled postComplete stages.
+      // Both: fall through to HANDOVER.
 
       return {
         action: "goto",
