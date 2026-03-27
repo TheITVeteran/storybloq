@@ -831,7 +831,7 @@ async function handleReport(root: string, args: GuideInput): Promise<McpToolResu
 async function handleResume(root: string, args: GuideInput): Promise<McpToolResult> {
   if (!args.sessionId) return guideError(new Error("sessionId is required for resume"));
 
-  const info = findSessionById(root, args.sessionId);
+  let info = findSessionById(root, args.sessionId);
   if (!info) return guideError(new Error(`Session ${args.sessionId} not found`));
 
   // ISS-024: recover any pending mutation before processing
