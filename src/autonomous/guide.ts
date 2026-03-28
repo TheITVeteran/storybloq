@@ -511,8 +511,10 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         ? (writeTestsCommand ?? testStageCommand)
         : testStageCommand;
 
-      // Guard: if both stages enabled with different commands, baseline is ambiguous
-      if (testEnabled && writeTestsEnabled && writeTestsCommand && testStageCommand && writeTestsCommand !== testStageCommand) {
+      // Guard: if both stages enabled with different effective commands, baseline is ambiguous
+      const effectiveWriteCmd = writeTestsCommand ?? testStageCommand ?? "npm test";
+      const effectiveTestCmd = testStageCommand ?? "npm test";
+      if (testEnabled && writeTestsEnabled && effectiveWriteCmd !== effectiveTestCmd) {
         deleteSession(root, session.sessionId);
         return guideError(new Error(
           `WRITE_TESTS and TEST stages use different commands ("${writeTestsCommand}" vs "${testStageCommand}"). ` +
@@ -534,11 +536,15 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
           exitCode: err.code ?? 1,
         }));
         const exitCode = "exitCode" in result ? (result.exitCode as number) : 0;
-        const output = ("stdout" in result ? String(result.stdout) : "").slice(-500);
-        const passMatch = output.match(/(\d+)\s*pass/i);
-        const failMatch = output.match(/(\d+)\s*fail/i);
+        // Parse combined stdout+stderr — test runners (Jest, Vitest, Mocha) print to stderr on failure
+        const rawOut = "stdout" in result ? String(result.stdout) : "";
+        const rawErr = "stderr" in result ? String((result as Record<string, unknown>).stderr) : "";
+        const combined = rawOut + "\n" + rawErr;
+        const passMatch = combined.match(/(\d+)\s*pass/i);
+        const failMatch = combined.match(/(\d+)\s*fail/i);
         const passCount = passMatch ? parseInt(passMatch[1]!, 10) : -1;
         const failCount = failMatch ? parseInt(failMatch[1]!, 10) : -1;
+        const output = combined.slice(-500);
         updated = { ...updated, testBaseline: { exitCode, passCount, failCount, summary: output } };
 
         // T-139: WRITE_TESTS requires parseable baseline — fail fast if not available

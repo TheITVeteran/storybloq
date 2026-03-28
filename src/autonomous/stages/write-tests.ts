@@ -75,12 +75,14 @@ export class WriteTestsStage implements WorkflowStage {
     const baseline = ctx.state.testBaseline;
     const baselineFailCount = baseline?.failCount ?? -1;
 
+    const nextRetry = retryCount + 1;
+
     // Strict baseline validation
     if (baseline === null || baseline === undefined || baselineFailCount < 0) {
-      ctx.writeState({ writeTestsRetryCount: retryCount + 1 });
-      if (retryCount + 1 >= MAX_WRITE_TESTS_RETRIES) {
+      if (nextRetry >= MAX_WRITE_TESTS_RETRIES) {
         return exhaustionAction(ctx);
       }
+      ctx.writeState({ writeTestsRetryCount: nextRetry });
       return {
         action: "retry",
         instruction: "Cannot validate TDD results — test baseline was not captured with parseable fail counts. Re-run tests and include explicit pass/fail counts in your report notes (e.g. 'exit code: 1, 10 passed, 3 failed').",
@@ -89,10 +91,10 @@ export class WriteTestsStage implements WorkflowStage {
 
     // Current fail count must be parseable
     if (currentFailCount < 0) {
-      ctx.writeState({ writeTestsRetryCount: retryCount + 1 });
-      if (retryCount + 1 >= MAX_WRITE_TESTS_RETRIES) {
+      if (nextRetry >= MAX_WRITE_TESTS_RETRIES) {
         return exhaustionAction(ctx);
       }
+      ctx.writeState({ writeTestsRetryCount: nextRetry });
       return {
         action: "retry",
         instruction: "Could not parse fail count from your report. Re-run tests and include explicit pass/fail counts in notes (e.g. 'exit code: 1, 10 passed, 3 failed').",
@@ -111,23 +113,29 @@ export class WriteTestsStage implements WorkflowStage {
       return { action: "advance" };
     }
 
-    // Tests pass or same failures — no new tests written
-    ctx.writeState({ writeTestsRetryCount: retryCount + 1 });
+    // Tests pass or same/decreased failures — no new tests written
     ctx.appendEvent("write_tests", {
       exitCode,
       baselineFailCount,
       currentFailCount,
       result: "retry",
-      retryCount: retryCount + 1,
+      retryCount: nextRetry,
     });
 
-    if (retryCount + 1 >= MAX_WRITE_TESTS_RETRIES) {
+    if (nextRetry >= MAX_WRITE_TESTS_RETRIES) {
       return exhaustionAction(ctx);
     }
+    ctx.writeState({ writeTestsRetryCount: nextRetry });
 
-    const guidance = exitCode === 0
-      ? "All tests pass — you need to write tests for behavior that doesn't exist yet. The tests should FAIL before implementation."
-      : `Fail count (${currentFailCount}) has not increased vs baseline (${baselineFailCount}). Write tests for NEW unimplemented behavior, not existing failures.`;
+    // Fix 4: Different guidance for decreased vs unchanged fail count
+    let guidance: string;
+    if (currentFailCount < baselineFailCount) {
+      guidance = `Fail count decreased (${currentFailCount} vs baseline ${baselineFailCount}) — you may have fixed pre-existing failures. Add new failing tests WITHOUT fixing existing ones.`;
+    } else if (exitCode === 0) {
+      guidance = "All tests pass — you need to write tests for behavior that doesn't exist yet. The tests should FAIL before implementation.";
+    } else {
+      guidance = `Fail count (${currentFailCount}) has not increased vs baseline (${baselineFailCount}). Write tests for NEW unimplemented behavior, not existing failures.`;
+    }
 
     return {
       action: "retry",
