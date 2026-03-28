@@ -1056,6 +1056,13 @@ function formatFullExport(
           status: n.status,
           tags: n.tags,
         })),
+        lessons: state.lessons.filter((l) => l.status === "active").map((l) => ({
+          id: l.id,
+          title: l.title,
+          content: l.content,
+          tags: l.tags,
+          reinforcements: l.reinforcements,
+        })),
         blockers: state.roadmap.blockers.map((b) => ({
           name: b.name,
           cleared: isBlockerCleared(b),
@@ -1111,6 +1118,17 @@ function formatFullExport(
       const title = n.title ?? n.id;
       const tagInfo = n.tags.length > 0 ? ` (${n.tags.join(", ")})` : "";
       lines.push(`- ${n.id}: ${escapeMarkdownInline(title)}${tagInfo}`);
+    }
+  }
+
+  const activeLessons = state.lessons.filter((l) => l.status === "active");
+  if (activeLessons.length > 0) {
+    lines.push("");
+    lines.push("## Lessons");
+    for (const l of activeLessons) {
+      const reinforced = l.reinforcements > 0 ? ` (×${l.reinforcements})` : "";
+      const tagInfo = l.tags.length > 0 ? ` [${l.tags.join(", ")}]` : "";
+      lines.push(`- ${l.id}: ${escapeMarkdownInline(l.title)}${reinforced}${tagInfo}`);
     }
   }
 
