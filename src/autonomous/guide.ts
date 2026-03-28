@@ -503,7 +503,8 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     const writeTestsConfig = resolvedRecipe.stages?.WRITE_TESTS as Record<string, unknown> | undefined;
     const testEnabled = testConfig?.enabled && resolvedRecipe.pipeline.includes("TEST");
     const writeTestsEnabled = writeTestsConfig?.enabled && resolvedRecipe.pipeline.includes("WRITE_TESTS");
-    if (testEnabled || writeTestsEnabled) {
+    // Skip baseline capture for plan mode — it exits at PLAN_REVIEW and never reaches TEST/WRITE_TESTS
+    if ((testEnabled || writeTestsEnabled) && mode !== "plan") {
       // T-139: Use WRITE_TESTS command when it's the requesting stage, else TEST command
       const writeTestsCommand = writeTestsConfig?.command as string | undefined;
       const testStageCommand = testConfig?.command as string | undefined;
@@ -1079,6 +1080,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       HANDOVER:     { state: "PICK_TICKET", resetPlan: false, resetCode: false },
       PLAN:         { state: "PLAN",        resetPlan: true,  resetCode: false },
       IMPLEMENT:    { state: "PLAN",        resetPlan: true,  resetCode: false },
+      WRITE_TESTS:  { state: "PLAN",        resetPlan: true,  resetCode: false },  // T-139: baseline stale after HEAD change
       PLAN_REVIEW:  { state: "PLAN",        resetPlan: true,  resetCode: true  },
       TEST:         { state: "IMPLEMENT",   resetPlan: false, resetCode: true  },  // T-128: tests invalidated by HEAD change
       CODE_REVIEW:  { state: "PLAN",        resetPlan: true,  resetCode: true  },
