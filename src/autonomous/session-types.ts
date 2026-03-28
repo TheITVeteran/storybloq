@@ -389,6 +389,7 @@ export const SessionStateSchema = z.object({
   testRetryCount: z.number().default(0),
   writeTestsRetryCount: z.number().default(0),
   verifyRetryCount: z.number().default(0),
+  verifyAutoDetected: z.boolean().default(false),
 
   // T-128: Resolved recipe (frozen at session start, survives compact/resume)
   resolvedPipeline: z.array(z.string()).optional(),

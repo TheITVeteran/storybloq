@@ -4,8 +4,8 @@ import { gitDiffNames } from "../git-inspector.js";
 
 const MAX_VERIFY_RETRIES = 3;
 
-// Next.js App Router: app/api/.../route.ts → GET /api/...
-const APP_ROUTER_RE = /^(?:src\/)?app\/(.*?)\/route\.[jt]sx?$/;
+// Next.js App Router: app/**/api/**/route.ts → GET /api/... (requires api/ segment — skip page handlers)
+const APP_ROUTER_RE = /^(?:src\/)?app\/((?:.*\/)?api\/.*?)\/route\.[jt]sx?$/;
 // Next.js Pages Router: pages/api/... → GET /api/...
 const PAGES_ROUTER_RE = /^(?:src\/)?pages\/(api\/.*?)\.[jt]sx?$/;
 // Dynamic segment [id] → 1, route group (...) → stripped
@@ -47,7 +47,7 @@ export class VerifyStage implements WorkflowStage {
         if (diffResult.ok) {
           const detected = detectEndpoints(diffResult.data);
           endpoints = detected.endpoints;
-          autoDetected = true;
+          autoDetected = endpoints.length > 0; // only true when endpoints actually found
           if (detected.skippedRoutes.length > 0) {
             ctx.appendEvent("verify_skipped_routes", {
               routes: detected.skippedRoutes,
@@ -57,9 +57,12 @@ export class VerifyStage implements WorkflowStage {
       }
     }
 
+    // Persist autoDetected flag for report() to differentiate 4xx handling
+    ctx.writeState({ verifyAutoDetected: autoDetected });
+
     // No endpoints → advance with note (ticket may not touch HTTP endpoints)
     if (endpoints.length === 0) {
-      ctx.appendEvent("verify", { result: "no_endpoints", autoDetected });
+      ctx.appendEvent("verify", { result: "no_endpoints", autoDetected: false });
       return { action: "advance" };
     }
 
@@ -142,15 +145,37 @@ export class VerifyStage implements WorkflowStage {
       };
     }
 
-    // All 2xx/3xx (or 4xx from explicit) → advance
+    // Check for 4xx
     const clientErrors = results.filter((r) => r.status >= 400 && r.status < 500);
-    const eventResult = clientErrors.length > 0 ? "pass_with_warnings" : "pass";
+    if (clientErrors.length > 0) {
+      const isAutoDetected = ctx.state.verifyAutoDetected ?? false;
+      if (isAutoDetected) {
+        // Auto-detected endpoints: 4xx may be bad path derivation → retry
+        if (nextRetry >= MAX_VERIFY_RETRIES) {
+          return exhaustionAction(ctx);
+        }
+        ctx.writeState({ verifyRetryCount: nextRetry });
+        ctx.appendEvent("verify", { result: "retry_4xx_auto", clientErrors });
+        return {
+          action: "retry",
+          instruction: [
+            "Some auto-detected endpoints returned 4xx. This may be a bad path derivation or the endpoint needs data seeding.",
+            `Errors: ${clientErrors.map((e) => `${e.endpoint}: ${e.status}`).join(", ")}`,
+            "",
+            "Try: seed test data first (e.g. POST to create a record, then re-curl). Or report the same results if 4xx is expected.",
+          ].join("\n"),
+        };
+      }
+      // Explicit endpoints: 4xx = advance with warning (user configured it)
+      ctx.appendEvent("verify", { result: "pass_with_warnings", warnings: clientErrors });
+    }
+
+    // All 2xx/3xx (or 4xx from explicit) → advance
     ctx.writeState({ verifyRetryCount: 0 });
     ctx.appendEvent("verify", {
-      result: eventResult,
+      result: clientErrors.length > 0 ? "pass_with_warnings" : "pass",
       endpointCount: results.length,
       statuses: results.map((r) => r.status),
-      ...(clientErrors.length > 0 ? { warnings: clientErrors } : {}),
     });
     return { action: "advance" };
   }
@@ -203,5 +228,5 @@ export function detectEndpoints(changedFiles: string[]): DetectedEndpoints {
     }
   }
 
-  return { endpoints, skippedRoutes };
+  return { endpoints: [...new Set(endpoints)], skippedRoutes };
 }

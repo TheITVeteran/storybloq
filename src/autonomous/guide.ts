@@ -570,11 +570,11 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     // T-131: INIT validation for VERIFY stage
     const verifyConfig = resolvedRecipe.stages?.VERIFY as Record<string, unknown> | undefined;
     if (verifyConfig?.enabled && resolvedRecipe.pipeline.includes("VERIFY")) {
-      const startCmd = verifyConfig.startCommand as string | undefined;
+      const startCmd = (verifyConfig.startCommand as string | undefined) ?? "npm run dev";
       const readinessUrl = verifyConfig.readinessUrl as string | undefined;
-      if (!startCmd || !startCmd.trim()) {
+      if (!startCmd.trim()) {
         deleteSession(root, session.sessionId);
-        return guideError(new Error("VERIFY stage is enabled but stages.VERIFY.startCommand is not configured."));
+        return guideError(new Error("VERIFY stage is enabled but stages.VERIFY.startCommand is empty."));
       }
       if (readinessUrl) {
         try {

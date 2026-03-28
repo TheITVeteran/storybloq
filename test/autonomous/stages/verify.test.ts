@@ -221,6 +221,18 @@ describe("VerifyStage", () => {
 
   // --- report: 4xx ---
 
+  it("report() retries for 4xx from auto-detected endpoints", async () => {
+    const state = makeState({ verifyAutoDetected: true });
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+    const advance = await stage.report(ctx, {
+      completedAction: "verify_done",
+      notes: JSON.stringify([
+        { endpoint: "GET /api/users", status: 404 },
+      ]),
+    });
+    expect(advance.action).toBe("retry");
+  });
+
   it("report() advances with warning for 4xx from explicit endpoints", async () => {
     const state = makeState();
     const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
@@ -288,14 +300,19 @@ describe("detectEndpoints", () => {
     expect(result.endpoints).toEqual(["GET /api/users/1"]);
   });
 
-  it("strips route groups", () => {
+  it("skips non-API App Router routes (page handlers)", () => {
+    const result = detectEndpoints(["app/(dashboard)/route.ts"]);
+    expect(result.endpoints).toEqual([]);
+  });
+
+  it("strips route group before api segment", () => {
     const result = detectEndpoints(["app/(auth)/api/users/route.ts"]);
     expect(result.endpoints).toEqual(["GET /api/users"]);
   });
 
-  it("strips terminal route group (no trailing slash)", () => {
-    const result = detectEndpoints(["app/(dashboard)/route.ts"]);
-    expect(result.endpoints).toEqual(["GET /"]);
+  it("deduplicates identical endpoints", () => {
+    const result = detectEndpoints(["app/api/users/route.ts", "app/api/users/route.js"]);
+    expect(result.endpoints).toEqual(["GET /api/users"]);
   });
 
   it("detects Pages Router endpoints", () => {
