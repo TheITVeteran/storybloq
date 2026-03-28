@@ -1260,6 +1260,15 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
     });
   }
 
+  const resumeMode = written.mode ?? "auto";
+  const modeContext = resumeMode === "auto"
+    ? "You are in autonomous mode — continue working."
+    : resumeMode === "review"
+      ? "You are in review mode — session ends after code review approval."
+      : resumeMode === "plan"
+        ? "You are in plan mode — session ends after plan review approval."
+        : "You are in guided mode — single ticket, full pipeline.";
+
   return guideResult(written, resumeState, {
     instruction: [
       "# Resumed After Compact",
@@ -1268,12 +1277,19 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       written.ticket ? `Working on: **${written.ticket.id}: ${written.ticket.title}**` : "No ticket in progress.",
       "",
       "Continue where you left off. Call me when you complete the current step.",
+      "",
+      modeContext,
     ].join("\n"),
-    reminders: [
-      "Do NOT use plan mode.",
-      "Do NOT stop or summarize.",
-      "Call autonomous_guide after completing each step.",
-    ],
+    reminders: resumeMode === "auto"
+      ? [
+          "Do NOT use plan mode.",
+          "Do NOT stop or summarize.",
+          "Call autonomous_guide after completing each step.",
+        ]
+      : [
+          `This is ${resumeMode} mode.`,
+          "Call autonomous_guide after completing each step.",
+        ],
   });
 }
 
@@ -1343,8 +1359,16 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
 
   // ISS-036: Cancel guard — coding sessions cannot be cancelled via MCP
   if (info.state.recipe === "coding") {
+    const sessionMode = info.state.mode ?? "auto";
+    const modeGuidance = sessionMode === "plan"
+      ? "Plan mode sessions end after plan review approval — continue to that step."
+      : sessionMode === "review"
+        ? "Review mode sessions end after code review approval — continue to that step."
+        : sessionMode === "guided"
+          ? "Guided mode sessions end after ticket completion — continue to FINALIZE."
+          : "Complete the current ticket and write a handover to end the session.";
     return guideError(new Error(
-      "Cannot cancel a coding session. Complete the current ticket and write a handover to end the session.",
+      `Cannot cancel a coding session. ${modeGuidance}`,
     ));
   }
 

@@ -1146,7 +1146,11 @@ function hasAnyChanges(diff: SnapshotDiff): boolean {
     (diff.notes?.removed.length ?? 0) > 0 ||
     (diff.notes?.updated.length ?? 0) > 0 ||
     (diff.handovers?.added.length ?? 0) > 0 ||
-    (diff.handovers?.removed.length ?? 0) > 0
+    (diff.handovers?.removed.length ?? 0) > 0 ||
+    (diff.lessons?.added.length ?? 0) > 0 ||
+    (diff.lessons?.removed.length ?? 0) > 0 ||
+    (diff.lessons?.updated.length ?? 0) > 0 ||
+    (diff.lessons?.reinforced.length ?? 0) > 0
   );
 }
 
