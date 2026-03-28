@@ -3,7 +3,7 @@
  * Tests enter() and report() contracts, type discrimination, behavioral equivalence.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -315,6 +315,73 @@ describe("CompleteStage", () => {
     const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
     const advance = await stage.report(ctx, { completedAction: "acknowledged" });
     expect(advance.action).toBe("goto");
+  });
+
+  // --- T-147: Periodic checkpoint handovers ---
+
+  it("enter() writes checkpoint handover at handoverInterval", async () => {
+    writeFileSync(join(testRoot, ".story", "tickets", "T-999.json"), JSON.stringify({
+      id: "T-999", title: "Test", description: "", type: "task", status: "open",
+      phase: null, order: 10, createdDate: "2026-01-01", completedDate: null, blockedBy: [],
+    }), "utf-8");
+    const state = makeState({
+      state: "COMPLETE",
+      completedTickets: [{ id: "T-001" }, { id: "T-002" }],
+      config: { maxTicketsPerSession: 0, compactThreshold: "high", reviewBackends: ["codex", "agent"], handoverInterval: 2 },
+    });
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    const handoversBefore = readdirSync(join(testRoot, ".story", "handovers"));
+    await stage.enter(ctx);
+    const handoversAfter = readdirSync(join(testRoot, ".story", "handovers"));
+
+    expect(handoversAfter.length).toBeGreaterThan(handoversBefore.length);
+    // Verify the handover file contains checkpoint content
+    const newFile = handoversAfter.find((f) => !handoversBefore.includes(f));
+    expect(newFile).toBeDefined();
+    if (newFile) {
+      const content = readFileSync(join(testRoot, ".story", "handovers", newFile), "utf-8");
+      expect(content).toContain("Checkpoint");
+      expect(content).toContain("T-001");
+    }
+  });
+
+  it("enter() skips checkpoint when handoverInterval is 0", async () => {
+    writeFileSync(join(testRoot, ".story", "tickets", "T-999.json"), JSON.stringify({
+      id: "T-999", title: "Test", description: "", type: "task", status: "open",
+      phase: null, order: 10, createdDate: "2026-01-01", completedDate: null, blockedBy: [],
+    }), "utf-8");
+    const state = makeState({
+      state: "COMPLETE",
+      completedTickets: [{ id: "T-001" }, { id: "T-002" }],
+      config: { maxTicketsPerSession: 0, compactThreshold: "high", reviewBackends: ["codex", "agent"], handoverInterval: 0 },
+    });
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    const handoversBefore = readdirSync(join(testRoot, ".story", "handovers"));
+    await stage.enter(ctx);
+    const handoversAfter = readdirSync(join(testRoot, ".story", "handovers"));
+
+    expect(handoversAfter.length).toBe(handoversBefore.length);
+  });
+
+  it("enter() skips checkpoint when ticketsDone not divisible by interval", async () => {
+    writeFileSync(join(testRoot, ".story", "tickets", "T-999.json"), JSON.stringify({
+      id: "T-999", title: "Test", description: "", type: "task", status: "open",
+      phase: null, order: 10, createdDate: "2026-01-01", completedDate: null, blockedBy: [],
+    }), "utf-8");
+    const state = makeState({
+      state: "COMPLETE",
+      completedTickets: [{ id: "T-001" }, { id: "T-002" }, { id: "T-003" }],
+      config: { maxTicketsPerSession: 0, compactThreshold: "high", reviewBackends: ["codex", "agent"], handoverInterval: 2 },
+    });
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    const handoversBefore = readdirSync(join(testRoot, ".story", "handovers"));
+    await stage.enter(ctx);
+    const handoversAfter = readdirSync(join(testRoot, ".story", "handovers"));
+
+    expect(handoversAfter.length).toBe(handoversBefore.length);
   });
 });
 

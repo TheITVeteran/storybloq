@@ -14,6 +14,7 @@
   "defaults": {
     "maxTicketsPerSession": 3,
     "compactThreshold": "high",
-    "reviewBackends": ["codex", "agent"]
+    "reviewBackends": ["codex", "agent"],
+    "handoverInterval": 5
   }
 }

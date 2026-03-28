@@ -57,6 +57,7 @@ export interface SessionConfig {
   compactThreshold?: string;
   reviewBackends?: string[];
   mode?: "auto" | "review" | "plan" | "guided";
+  handoverInterval?: number;
 }
 
 /** Create a new session directory and write initial state.json. */
@@ -110,6 +111,7 @@ export function createSession(
       maxTicketsPerSession: configOverrides?.maxTicketsPerSession ?? 3,
       compactThreshold: configOverrides?.compactThreshold ?? "high",
       reviewBackends: configOverrides?.reviewBackends ?? ["codex", "agent"],
+      handoverInterval: configOverrides?.handoverInterval ?? 5,
     },
   };
 

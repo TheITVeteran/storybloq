@@ -47,7 +47,34 @@ export class CompleteStage implements WorkflowStage {
       } as StageAdvance;
     }
 
-    // Determine next action — no pressure-based routing (T-146: Claude Code handles compaction naturally)
+    // T-147: Periodic checkpoint handover (non-blocking, best-effort)
+    const handoverInterval = ctx.state.config.handoverInterval ?? 5;
+    if (handoverInterval > 0 && ticketsDone > 0 && ticketsDone % handoverInterval === 0) {
+      try {
+        const { handleHandoverCreate } = await import("../../cli/commands/handover.js");
+        const completedIds = ctx.state.completedTickets.map((t) => t.id).join(", ");
+        const content = [
+          `# Checkpoint — ${ticketsDone} tickets completed`,
+          "",
+          `**Session:** ${ctx.state.sessionId}`,
+          `**Tickets:** ${completedIds}`,
+          "",
+          "This is an automatic mid-session checkpoint. The session is still active.",
+        ].join("\n");
+        await handleHandoverCreate(content, "checkpoint", "md", ctx.root);
+      } catch { /* best-effort */ }
+
+      try {
+        const { loadProject } = await import("../../core/project-loader.js");
+        const { saveSnapshot } = await import("../../core/snapshot.js");
+        const loadResult = await loadProject(ctx.root);
+        await saveSnapshot(ctx.root, loadResult);
+      } catch { /* best-effort */ }
+
+      ctx.appendEvent("checkpoint", { ticketsDone, interval: handoverInterval });
+    }
+
+    // Determine next action
     let nextTarget: string;
 
     if (maxTickets > 0 && ticketsDone >= maxTickets) {
