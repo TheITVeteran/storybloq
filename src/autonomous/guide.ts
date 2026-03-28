@@ -517,7 +517,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       if (testEnabled && writeTestsEnabled && effectiveWriteCmd !== effectiveTestCmd) {
         deleteSession(root, session.sessionId);
         return guideError(new Error(
-          `WRITE_TESTS and TEST stages use different commands ("${writeTestsCommand}" vs "${testStageCommand}"). ` +
+          `WRITE_TESTS and TEST stages use different commands ("${effectiveWriteCmd}" vs "${effectiveTestCmd}"). ` +
           `They share a single test baseline, so commands must match. Use the same command for both or disable one.`,
         ));
       }
@@ -599,7 +599,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       handoverText ? `## Recent Handovers\n\n${handoverText}` : "",
       recapText ? `## Recap\n\n${recapText}` : "",
       rulesText ? `## Development Rules\n\n${rulesText}` : "",
-      lessonDigest || "",
+      lessonDigest ? lessonDigest.replace(/^# /m, "## ") : "",
     ].filter(Boolean);
     const digest = digestParts.join("\n\n---\n\n");
     try {

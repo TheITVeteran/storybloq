@@ -13,7 +13,7 @@ export const LessonSchema = z
     lastValidated: DateSchema,
     createdDate: DateSchema,
     updatedDate: DateSchema,
-    supersedes: z.string().regex(/^L-\d+$/).nullable(),
+    supersedes: LessonIdSchema.nullable(),
     status: z.enum(LESSON_STATUSES),
   })
   .passthrough();
