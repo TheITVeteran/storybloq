@@ -387,9 +387,10 @@ describe("resolveRecipe", () => {
     expect(recipe.defaults.reviewBackends).toEqual(["codex", "agent"]); // unchanged
   });
 
-  it("does not include TEST stage when not enabled", () => {
+  it("includes TEST and WRITE_TESTS stages by default", () => {
     const recipe = resolveRecipe("coding");
-    expect(recipe.pipeline).not.toContain("TEST");
+    expect(recipe.pipeline).toContain("TEST");
+    expect(recipe.pipeline).toContain("WRITE_TESTS");
   });
 
   it("rejects recipe names with path traversal characters", () => {

@@ -6,13 +6,14 @@
   "stages": {
     "PLAN_REVIEW": { "backends": ["codex", "agent"] },
     "CODE_REVIEW": { "backends": ["codex", "agent"] },
-    "WRITE_TESTS": { "enabled": false, "command": "npm test", "onExhaustion": "plan" },
+    "WRITE_TESTS": { "enabled": true, "command": "npm test", "onExhaustion": "plan" },
+    "TEST": { "enabled": true, "command": "npm test" },
     "VERIFY": { "enabled": false, "startCommand": "npm run dev", "readinessUrl": "http://localhost:3000", "endpoints": [] },
     "ISSUE_SWEEP": { "enabled": false }
   },
   "dirtyFileHandling": "block",
   "defaults": {
-    "maxTicketsPerSession": 3,
+    "maxTicketsPerSession": 0,
     "compactThreshold": "high",
     "reviewBackends": ["codex", "agent"],
     "handoverInterval": 5

@@ -108,7 +108,7 @@ export function createSession(
     startedAt: now,
     guideCallCount: 0,
     config: {
-      maxTicketsPerSession: configOverrides?.maxTicketsPerSession ?? 3,
+      maxTicketsPerSession: configOverrides?.maxTicketsPerSession ?? 0,
       compactThreshold: configOverrides?.compactThreshold ?? "high",
       reviewBackends: configOverrides?.reviewBackends ?? ["codex", "agent"],
       handoverInterval: configOverrides?.handoverInterval ?? 5,
