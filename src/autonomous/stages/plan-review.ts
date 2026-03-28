@@ -80,8 +80,11 @@ export class PlanReviewStage implements WorkflowStage {
     const isReject = verdict === "reject";
 
     let nextAction: "PLAN" | "IMPLEMENT" | "PLAN_REVIEW";
-    if (isReject || isRevise) {
+    if (isReject) {
       nextAction = "PLAN";
+    } else if (isRevise) {
+      // ISS-048: Revise stays in PLAN_REVIEW — agent already fixed inline, just re-review
+      nextAction = "PLAN_REVIEW";
     } else if (verdict === "approve" || (!hasCriticalOrMajor && roundNum >= minRounds)) {
       nextAction = "IMPLEMENT";
     } else if (roundNum >= 5) {
@@ -112,7 +115,25 @@ export class PlanReviewStage implements WorkflowStage {
       return {
         action: "back",
         target: "PLAN",
-        reason: isRevise ? "revise" : "reject",
+        reason: "reject",
+      };
+    }
+
+    // ISS-048: Revise stays in PLAN_REVIEW — retry with findings summary
+    if (isRevise) {
+      const findingSummary = findings.length > 0
+        ? findings.slice(0, 5).map((f) => `- [${f.severity}] ${f.description}`).join("\n")
+        : "Address the reviewer's concerns.";
+      return {
+        action: "retry",
+        instruction: [
+          `# Plan Review — Round ${roundNum} requested changes`,
+          "",
+          "Update the plan to address these findings, then call me with completedAction: \"plan_review_round\" and the new review verdict.",
+          "",
+          findingSummary,
+        ].join("\n"),
+        reminders: ["Update the plan file, then re-review. Do NOT rewrite from scratch."],
       };
     }
 

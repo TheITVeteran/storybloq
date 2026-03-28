@@ -1392,8 +1392,12 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
   const info = findSessionById(root, args.sessionId!);
   if (!info) return guideError(new Error(`Session ${args.sessionId} not found`));
 
-  // ISS-036: Cancel guard — coding sessions cannot be cancelled via MCP
-  if (info.state.recipe === "coding") {
+  // ISS-052: Allow cancel from safe states (PICK_TICKET, COMPLETE, HANDOVER) and already-ended sessions
+  if (info.state.state === "SESSION_END" || info.state.status === "completed") {
+    return guideError(new Error("Session already ended."));
+  }
+  const CANCELLABLE_STATES = new Set(["PICK_TICKET", "COMPLETE", "HANDOVER"]);
+  if (info.state.recipe === "coding" && !CANCELLABLE_STATES.has(info.state.state)) {
     const sessionMode = info.state.mode ?? "auto";
     const modeGuidance = sessionMode === "plan"
       ? "Plan mode sessions end after plan review approval — continue to that step."
@@ -1403,7 +1407,7 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
           ? "Guided mode sessions end after ticket completion — continue to FINALIZE."
           : "Complete the current ticket and write a handover to end the session.";
     return guideError(new Error(
-      `Cannot cancel a coding session. ${modeGuidance}`,
+      `Cannot cancel a coding session from ${info.state.state}. ${modeGuidance}`,
     ));
   }
 

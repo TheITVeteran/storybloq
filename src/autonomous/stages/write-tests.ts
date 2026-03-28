@@ -165,10 +165,10 @@ function exhaustionAction(ctx: StageContext): StageAdvance {
     return { action: "advance" };
   }
 
-  // Default: back to PLAN
+  // Default: back to PLAN with context about why TDD failed
   return {
     action: "back",
     target: "PLAN",
-    reason: "no_failing_tests",
+    reason: "TDD exhausted: could not verify new failing tests after 3 attempts. Revise the plan to make the test expectations clearer or simpler.",
   };
 }

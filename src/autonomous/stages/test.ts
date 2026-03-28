@@ -50,6 +50,14 @@ export class TestStage implements WorkflowStage {
     // Parse exit code from notes — require explicit exit code, default to failure if ambiguous
     const exitCodeMatch = notes.match(/exit\s*(?:code[:\s]*)?\s*(\d+)/i);
     if (!exitCodeMatch) {
+      // ISS-053: Increment retry count on parse failure to prevent infinite loop
+      const nextRetry = retryCount + 1;
+      if (nextRetry >= MAX_TEST_RETRIES) {
+        ctx.writeState({ testRetryCount: 0 });
+        ctx.appendEvent("tests_parse_exhausted", { retryCount: nextRetry });
+        return { action: "advance" }; // Give up parsing, advance to CODE_REVIEW
+      }
+      ctx.writeState({ testRetryCount: nextRetry });
       return { action: "retry", instruction: 'Could not parse exit code from notes. Include "exit code: 0" (or non-zero) in your notes.' };
     }
     const exitCode = parseInt(exitCodeMatch[1]!, 10);

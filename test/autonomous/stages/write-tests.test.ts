@@ -238,7 +238,7 @@ describe("WriteTestsStage", () => {
     expect(advance.action).toBe("back");
     if (advance.action === "back") {
       expect(advance.target).toBe("PLAN");
-      expect(advance.reason).toBe("no_failing_tests");
+      expect(advance.reason).toContain("TDD exhausted");
     }
   });
 

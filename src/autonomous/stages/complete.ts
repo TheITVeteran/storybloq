@@ -157,7 +157,7 @@ export class CompleteStage implements WorkflowStage {
           "You are in autonomous mode — continue working until all tickets are done or the session limit is reached.",
         ],
         transitionedFrom: "COMPLETE",
-        contextAdvice: advice,
+        contextAdvice: "ok",
       },
     };
   }

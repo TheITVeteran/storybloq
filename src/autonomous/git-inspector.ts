@@ -157,6 +157,13 @@ export async function gitStashPop(cwd: string, commitHash?: string): Promise<Git
   return git(cwd, ["stash", "pop", match.ref], () => undefined);
 }
 
+/** List files changed in a specific commit (for ISS-046 early-commit detection). */
+export async function gitDiffTreeNames(cwd: string, commitHash: string): Promise<GitResult<string[]>> {
+  return git(cwd, ["diff-tree", "--name-only", "--no-commit-id", "-r", commitHash], (out) =>
+    out.split("\n").filter((l) => l.trim().length > 0),
+  );
+}
+
 // Strict ref format: hex SHA (short or full) or HEAD. Rejects option injection (leading -)
 const SAFE_REF = /^[0-9a-f]{4,40}$/i;
 

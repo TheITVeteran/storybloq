@@ -1,6 +1,6 @@
 import type { WorkflowStage, StageResult, StageAdvance, StageContext } from "./types.js";
 import type { GuideReportInput } from "../session-types.js";
-import { gitDiffCachedNames, gitHead } from "../git-inspector.js";
+import { gitDiffCachedNames, gitHead, gitDiffTreeNames } from "../git-inspector.js";
 
 /**
  * FINALIZE stage — 3-checkpoint sub-machine for staging, pre-commit, and commit.
@@ -67,6 +67,26 @@ export class FinalizeStage implements WorkflowStage {
   private async handleStage(ctx: StageContext, report: GuideReportInput): Promise<StageAdvance> {
     const stagedResult = await gitDiffCachedNames(ctx.root);
     if (!stagedResult.ok || stagedResult.data.length === 0) {
+      // ISS-046: Check if agent already committed (staging area empty because commit happened)
+      const headResult = await gitHead(ctx.root);
+      const previousHead = ctx.state.git.expectedHead ?? ctx.state.git.initHead;
+      if (headResult.ok && previousHead && headResult.data.hash !== previousHead) {
+        // HEAD advanced — agent committed before reporting files_staged
+        // Validate commit contains ticket file if applicable
+        const ticketId = ctx.state.ticket?.id;
+        if (ticketId) {
+          const treeResult = await gitDiffTreeNames(ctx.root, headResult.data.hash);
+          const ticketPath = `.story/tickets/${ticketId}.json`;
+          if (treeResult.ok && !treeResult.data.includes(ticketPath)) {
+            return {
+              action: "retry",
+              instruction: `Commit detected (${headResult.data.hash.slice(0, 7)}) but ticket file ${ticketPath} is not in the commit. Amend the commit to include it: \`git add ${ticketPath} && git commit --amend --no-edit\`, then report completedAction: "commit_done" with the new hash.`,
+            };
+          }
+        }
+        // Commit is valid — delegate to handleCommit
+        return this.handleCommit(ctx, { ...report, commitHash: headResult.data.hash });
+      }
       return { action: "retry", instruction: 'No files are staged. Stage your changes and call me again with completedAction: "files_staged".' };
     }
 
@@ -84,6 +104,18 @@ export class FinalizeStage implements WorkflowStage {
             instruction: `Pre-existing untracked files are staged: ${overlap.join(", ")}. Unstage them with \`git restore --staged ${overlap.join(" ")}\`, or report with overrideOverlap: true to proceed.`,
           };
         }
+      }
+    }
+
+    // ISS-047: Validate ticket file is in staged set
+    const ticketId = ctx.state.ticket?.id;
+    if (ticketId) {
+      const ticketPath = `.story/tickets/${ticketId}.json`;
+      if (!stagedResult.data.includes(ticketPath)) {
+        return {
+          action: "retry",
+          instruction: `Ticket file ${ticketPath} is not staged. Run \`git add ${ticketPath}\` and call me again with completedAction: "files_staged".`,
+        };
       }
     }
 
@@ -165,18 +197,21 @@ export class FinalizeStage implements WorkflowStage {
     // Validate commitHash matches actual HEAD and is a new commit (ISS-033)
     const headResult = await gitHead(ctx.root);
     const previousHead = ctx.state.git.expectedHead ?? ctx.state.git.initHead;
-    if (!headResult.ok || headResult.data.hash !== commitHash) {
+    // ISS-051: Support short hashes — prefix match, then normalize to full 40-char SHA
+    const fullHead = headResult.ok ? headResult.data.hash : null;
+    if (!fullHead || (!fullHead.startsWith(commitHash) && commitHash !== fullHead)) {
       return {
         action: "retry",
-        instruction: `Commit hash mismatch: reported ${commitHash} but HEAD is ${headResult.ok ? headResult.data.hash : "unknown"}. Verify the commit succeeded and report the correct hash.`,
+        instruction: `Commit hash mismatch: reported ${commitHash} but HEAD is ${fullHead ?? "unknown"}. Verify the commit succeeded and report the correct hash.`,
       };
     }
-    if (previousHead && commitHash === previousHead) {
-      return { action: "retry", instruction: `No new commit detected: HEAD (${commitHash}) has not changed. Create a commit first, then report the new hash.` };
+    const normalizedHash = fullHead; // Always store full 40-char SHA
+    if (previousHead && normalizedHash === previousHead) {
+      return { action: "retry", instruction: `No new commit detected: HEAD (${normalizedHash}) has not changed. Create a commit first, then report the new hash.` };
     }
 
     const completedTicket = ctx.state.ticket
-      ? { id: ctx.state.ticket.id, title: ctx.state.ticket.title, commitHash, risk: ctx.state.ticket.risk }
+      ? { id: ctx.state.ticket.id, title: ctx.state.ticket.title, commitHash: normalizedHash, risk: ctx.state.ticket.risk, realizedRisk: ctx.state.ticket.realizedRisk }
       : undefined;
 
     ctx.writeState({
@@ -187,12 +222,12 @@ export class FinalizeStage implements WorkflowStage {
       ticket: undefined,
       git: {
         ...ctx.state.git,
-        mergeBase: commitHash,
-        expectedHead: commitHash,
+        mergeBase: normalizedHash,
+        expectedHead: normalizedHash,
       },
     });
 
-    ctx.appendEvent("commit", { commitHash, ticketId: completedTicket?.id });
+    ctx.appendEvent("commit", { commitHash: normalizedHash, ticketId: completedTicket?.id });
 
     return { action: "advance" };
   }
