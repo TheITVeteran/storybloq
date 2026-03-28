@@ -284,6 +284,7 @@ export const SessionStateSchema = z.object({
     title: z.string().optional(),
     commitHash: z.string().optional(),
     risk: z.string().optional(),
+    realizedRisk: z.string().optional(),
   })).default([]),
 
   // FINALIZE checkpoint

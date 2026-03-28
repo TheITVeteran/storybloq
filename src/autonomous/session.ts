@@ -188,7 +188,7 @@ export function readEvents(dir: string): { events: EventEntry[]; malformedCount:
         typeof parsed.rev === "number" &&
         typeof parsed.type === "string" &&
         typeof parsed.timestamp === "string" &&
-        (parsed.data === undefined || (typeof parsed.data === "object" && parsed.data !== null))
+        (!("data" in parsed) || (typeof parsed.data === "object" && parsed.data !== null))
       ) {
         events.push(parsed as EventEntry);
       } else {

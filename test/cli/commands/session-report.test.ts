@@ -129,6 +129,7 @@ describe("handleSessionReport", () => {
     expect(result.output).toContain("T-001");
     expect(result.output).toContain("T-002");
     expect(result.output).toContain("aaa111");
+    expect(result.output).toContain("low → medium"); // realizedRisk escalation
   });
 
   it("shows in-progress ticket when no completions", async () => {
