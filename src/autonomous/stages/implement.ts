@@ -1,6 +1,6 @@
 import type { WorkflowStage, StageResult, StageAdvance, StageContext } from "./types.js";
 import type { GuideReportInput } from "../session-types.js";
-import { assessRisk, requiredRounds, nextReviewer } from "../review-depth.js";
+import { assessRisk } from "../review-depth.js";
 import { gitDiffStat, gitDiffNames } from "../git-inspector.js";
 
 /**
@@ -52,39 +52,9 @@ export class ImplementStage implements WorkflowStage {
       ticket: ctx.state.ticket ? { ...ctx.state.ticket, realizedRisk } : ctx.state.ticket,
     });
 
-    // Build the next stage's instruction (CODE_REVIEW or TEST)
-    // During hybrid dispatch, the next stage may not be registered yet,
-    // so we produce the instruction here via advance+result.
-    const backends = ctx.state.config.reviewBackends;
-    const codeReviews = ctx.state.reviews.code;
-    const reviewer = nextReviewer(codeReviews, backends);
-    const rounds = requiredRounds(realizedRisk as "low" | "medium" | "high");
-
-    const diffCommand = mergeBase
-      ? `\`git diff ${mergeBase}\``
-      : `\`git diff HEAD\` AND \`git ls-files --others --exclude-standard\``;
-    const diffReminder = mergeBase
-      ? `Run: git diff ${mergeBase} — pass FULL output to reviewer.`
-      : "Run: git diff HEAD + git ls-files --others --exclude-standard — pass FULL output to reviewer.";
-
-    return {
-      action: "advance",
-      result: {
-        instruction: [
-          `# Code Review — Round 1 of ${rounds} minimum`,
-          "",
-          `Realized risk: **${realizedRisk}**${realizedRisk !== ctx.state.ticket?.risk ? ` (was ${ctx.state.ticket?.risk})` : ""}.`,
-          "",
-          `Capture the diff with: ${diffCommand}`,
-          "",
-          "**IMPORTANT:** Pass the FULL unified diff output to the reviewer. Do NOT summarize, compress, or truncate the diff.",
-          "",
-          `Run a code review using **${reviewer}**.`,
-          "When done, report verdict and findings.",
-        ].join("\n"),
-        reminders: [diffReminder, "Do NOT compress or summarize the diff."],
-        transitionedFrom: "IMPLEMENT",
-      },
-    };
+    // T-139: Return plain advance — let the next stage's enter() provide its own instruction.
+    // Previously hardcoded CODE_REVIEW instruction here, but this breaks when
+    // TEST or WRITE_TESTS is inserted between IMPLEMENT and CODE_REVIEW.
+    return { action: "advance" };
   }
 }

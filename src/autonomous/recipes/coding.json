@@ -6,6 +6,7 @@
   "stages": {
     "PLAN_REVIEW": { "backends": ["codex", "agent"] },
     "CODE_REVIEW": { "backends": ["codex", "agent"] },
+    "WRITE_TESTS": { "enabled": false, "command": "npm test", "onExhaustion": "plan" },
     "ISSUE_SWEEP": { "enabled": false }
   },
   "dirtyFileHandling": "block",

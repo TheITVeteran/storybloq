@@ -116,7 +116,7 @@ describe("ImplementStage", () => {
     }
   });
 
-  it("report() returns advance with CODE_REVIEW instruction", async () => {
+  it("report() returns plain advance (no hardcoded result)", async () => {
     const state = makeState({
       state: "IMPLEMENT",
       ticket: { id: "T-001", title: "Test", claimed: true, risk: "low" },
@@ -124,9 +124,9 @@ describe("ImplementStage", () => {
     const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
     const advance = await stage.report(ctx, { completedAction: "implementation_done" });
     expect(advance.action).toBe("advance");
-    if (advance.action === "advance" && "result" in advance && advance.result) {
-      expect(advance.result.instruction).toContain("Code Review");
-    }
+    // T-139: ImplementStage no longer hardcodes next stage instruction —
+    // the pipeline walker calls nextStage.enter() instead.
+    expect("result" in advance).toBe(false);
   });
 
   it("report() updates ticket with realizedRisk", async () => {

@@ -94,6 +94,16 @@ export function resolveRecipe(
 
   // Insert conditional stages
   const stages = raw.stages ?? {};
+
+  // WRITE_TESTS: insert BEFORE IMPLEMENT (TDD — write failing tests first)
+  if ((stages.WRITE_TESTS as Record<string, unknown>)?.enabled) {
+    const implementIdx = pipeline.indexOf("IMPLEMENT");
+    if (implementIdx !== -1 && !pipeline.includes("WRITE_TESTS")) {
+      pipeline.splice(implementIdx, 0, "WRITE_TESTS");
+    }
+  }
+
+  // TEST: insert AFTER IMPLEMENT (verify tests pass post-implementation)
   if ((stages.TEST as Record<string, unknown>)?.enabled) {
     const implementIdx = pipeline.indexOf("IMPLEMENT");
     if (implementIdx !== -1 && !pipeline.includes("TEST")) {

@@ -498,15 +498,32 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       },
     };
 
-    // T-124: Capture test baseline if TEST stage is enabled
+    // T-124/T-139: Capture test baseline if TEST or WRITE_TESTS stage is enabled
     const testConfig = resolvedRecipe.stages?.TEST as Record<string, unknown> | undefined;
-    if (testConfig?.enabled && resolvedRecipe.pipeline.includes("TEST")) {
-      const testCommand = testConfig.command as string | undefined;
+    const writeTestsConfig = resolvedRecipe.stages?.WRITE_TESTS as Record<string, unknown> | undefined;
+    const testEnabled = testConfig?.enabled && resolvedRecipe.pipeline.includes("TEST");
+    const writeTestsEnabled = writeTestsConfig?.enabled && resolvedRecipe.pipeline.includes("WRITE_TESTS");
+    if (testEnabled || writeTestsEnabled) {
+      // T-139: Use WRITE_TESTS command when it's the requesting stage, else TEST command
+      const writeTestsCommand = writeTestsConfig?.command as string | undefined;
+      const testStageCommand = testConfig?.command as string | undefined;
+      const testCommand = writeTestsEnabled
+        ? (writeTestsCommand ?? testStageCommand)
+        : testStageCommand;
+
+      // Guard: if both stages enabled with different commands, baseline is ambiguous
+      if (testEnabled && writeTestsEnabled && writeTestsCommand && testStageCommand && writeTestsCommand !== testStageCommand) {
+        deleteSession(root, session.sessionId);
+        return guideError(new Error(
+          `WRITE_TESTS and TEST stages use different commands ("${writeTestsCommand}" vs "${testStageCommand}"). ` +
+          `They share a single test baseline, so commands must match. Use the same command for both or disable one.`,
+        ));
+      }
       if (!testCommand) {
         deleteSession(root, session.sessionId);
-        return guideError(new Error("TEST stage is enabled but stages.TEST.command is not configured. Set the test command in config.json recipeOverrides or the recipe file."));
+        return guideError(new Error("TEST/WRITE_TESTS stage is enabled but no test command is configured. Set stages.TEST.command or stages.WRITE_TESTS.command in config.json recipeOverrides or the recipe file."));
       }
-      // Capture baseline — best-effort, non-blocking
+      // Capture baseline
       try {
         const { exec: execCb } = await import("node:child_process");
         const { promisify } = await import("node:util");
@@ -518,14 +535,28 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         }));
         const exitCode = "exitCode" in result ? (result.exitCode as number) : 0;
         const output = ("stdout" in result ? String(result.stdout) : "").slice(-500);
-        // Parse pass/fail counts from output (e.g. "Tests: 10 passed, 2 failed" or "X passed (Y)")
         const passMatch = output.match(/(\d+)\s*pass/i);
         const failMatch = output.match(/(\d+)\s*fail/i);
-        const passCount = passMatch ? parseInt(passMatch[1]!, 10) : -1;  // -1 = uncaptured
+        const passCount = passMatch ? parseInt(passMatch[1]!, 10) : -1;
         const failCount = failMatch ? parseInt(failMatch[1]!, 10) : -1;
         updated = { ...updated, testBaseline: { exitCode, passCount, failCount, summary: output } };
+
+        // T-139: WRITE_TESTS requires parseable baseline — fail fast if not available
+        if (writeTestsEnabled && failCount < 0) {
+          deleteSession(root, session.sessionId);
+          return guideError(new Error(
+            "WRITE_TESTS stage is enabled but test baseline could not parse fail counts from test output. " +
+            "Configure a test reporter that outputs pass/fail counts, or disable WRITE_TESTS.",
+          ));
+        }
       } catch {
-        // Non-blocking — if baseline capture fails, tests still run during TEST stage
+        // Non-blocking for TEST-only. But WRITE_TESTS requires baseline.
+        if (writeTestsEnabled) {
+          deleteSession(root, session.sessionId);
+          return guideError(new Error(
+            "WRITE_TESTS stage is enabled but test baseline capture failed. Ensure the test command runs successfully.",
+          ));
+        }
       }
     }
 
