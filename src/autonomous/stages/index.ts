@@ -13,6 +13,7 @@ import { CodeReviewStage } from "./code-review.js";
 import { VerifyStage } from "./verify.js";
 import { FinalizeStage } from "./finalize.js";
 import { CompleteStage } from "./complete.js";
+import { LessonCaptureStage } from "./lesson-capture.js";
 import { IssueSweepStage } from "./issue-sweep.js";
 import { HandoverStage } from "./handover.js";
 
@@ -27,5 +28,6 @@ registerStage(new CodeReviewStage());
 registerStage(new VerifyStage());
 registerStage(new FinalizeStage());
 registerStage(new CompleteStage());
+registerStage(new LessonCaptureStage());
 registerStage(new IssueSweepStage());
 registerStage(new HandoverStage());

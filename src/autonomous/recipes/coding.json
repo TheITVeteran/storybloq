@@ -2,13 +2,14 @@
   "id": "coding",
   "schemaVersion": 2,
   "pipeline": ["PICK_TICKET", "PLAN", "PLAN_REVIEW", "IMPLEMENT", "CODE_REVIEW", "FINALIZE", "COMPLETE"],
-  "postComplete": ["ISSUE_SWEEP"],
+  "postComplete": ["LESSON_CAPTURE", "ISSUE_SWEEP"],
   "stages": {
     "PLAN_REVIEW": { "backends": ["codex", "agent"] },
     "CODE_REVIEW": { "backends": ["codex", "agent"] },
     "WRITE_TESTS": { "enabled": true, "command": "npm test", "onExhaustion": "plan" },
     "TEST": { "enabled": true, "command": "npm test" },
     "VERIFY": { "enabled": false, "startCommand": "npm run dev", "readinessUrl": "http://localhost:3000", "endpoints": [] },
+    "LESSON_CAPTURE": { "enabled": false },
     "ISSUE_SWEEP": { "enabled": false }
   },
   "dirtyFileHandling": "block",

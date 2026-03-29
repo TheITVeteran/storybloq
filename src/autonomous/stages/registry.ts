@@ -93,6 +93,28 @@ export function findFirstPostComplete(
 }
 
 /**
+ * Find the next non-skipping stage in postComplete AFTER the given stage ID.
+ * Used by processAdvance to advance through postComplete without looping.
+ */
+export function findNextPostComplete(
+  postComplete: readonly string[],
+  currentId: string,
+  ctx: StageContext,
+): NextStageResult {
+  const currentIndex = postComplete.indexOf(currentId);
+  // Start after current stage; if not found, scan from start (fallback)
+  const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
+  for (let i = startIndex; i < postComplete.length; i++) {
+    const id = postComplete[i]!;
+    const stage = stages.get(id);
+    if (!stage) return { kind: "unregistered", id };
+    if (stage.skip?.(ctx)) continue;
+    return { kind: "found", stage };
+  }
+  return { kind: "exhausted" };
+}
+
+/**
  * Validate that all stage IDs in a pipeline are registered.
  * Returns array of unregistered IDs (empty = valid).
  */

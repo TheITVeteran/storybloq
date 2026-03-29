@@ -20,6 +20,7 @@ export type WorkflowState =
   | "COMPACT"
   | "HANDOVER"
   | "COMPLETE"
+  | "LESSON_CAPTURE"
   | "ISSUE_SWEEP"
   | "SESSION_END";
 
@@ -39,6 +40,7 @@ const WORKING_STATES: ReadonlySet<string> = new Set([
   "VERIFY",
   "FINALIZE",
   "COMPACT",
+  "LESSON_CAPTURE",
   "ISSUE_SWEEP",
 ]);
 
@@ -148,7 +150,7 @@ export const WORKFLOW_STATES = [
   "PLAN", "PLAN_REVIEW",
   "IMPLEMENT", "WRITE_TESTS", "TEST", "CODE_REVIEW", "VERIFY",
   "FINALIZE", "COMPACT",
-  "HANDOVER", "COMPLETE", "ISSUE_SWEEP", "SESSION_END",
+  "HANDOVER", "COMPLETE", "LESSON_CAPTURE", "ISSUE_SWEEP", "SESSION_END",
 ] as const;
 
 export const WorkflowStateSchema = z.enum(WORKFLOW_STATES);

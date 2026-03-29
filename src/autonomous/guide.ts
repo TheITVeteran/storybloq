@@ -30,7 +30,7 @@ import { evaluatePressure } from "./context-pressure.js";
 import { assessRisk, requiredRounds, nextReviewer } from "./review-depth.js";
 import { gitHead, gitStatus, gitMergeBase, gitDiffStat, gitDiffNames, gitDiffCachedNames, gitBlobHash, gitStash, gitStashPop } from "./git-inspector.js";
 import { resolveRecipe } from "./recipes/loader.js";
-import { getStage, findNextStage, findFirstPostComplete, type NextStageResult } from "./stages/registry.js";
+import { getStage, findNextStage, findFirstPostComplete, findNextPostComplete, type NextStageResult } from "./stages/registry.js";
 import { StageContext, isStageAdvance, type StageAdvance, type StageResult } from "./stages/types.js";
 import "./stages/index.js"; // Register all extracted stages
 
@@ -906,7 +906,11 @@ async function processAdvance(
       if (next.kind === "exhausted") {
         // Pipeline exhausted — check postComplete or route to HANDOVER
         const postComplete = ctx.state.resolvedPostComplete ?? ctx.recipe.postComplete;
-        const post = findFirstPostComplete(postComplete, ctx);
+        // Use findNextPostComplete when current stage is in postComplete (avoids looping back to self)
+        const isInPostComplete = postComplete.includes(currentStage.id);
+        const post = isInPostComplete
+          ? findNextPostComplete(postComplete, currentStage.id, ctx)
+          : findFirstPostComplete(postComplete, ctx);
         if (post.kind === "found") {
           assertTransition(currentStage.id as WorkflowState, post.stage.id as WorkflowState);
           ctx.writeState({ state: post.stage.id, previousState: currentStage.id });
@@ -1120,6 +1124,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       TEST:         { state: "IMPLEMENT",   resetPlan: false, resetCode: true  },  // T-128: tests invalidated by HEAD change
       CODE_REVIEW:  { state: "PLAN",        resetPlan: true,  resetCode: true  },
       FINALIZE:     { state: "IMPLEMENT",   resetPlan: false, resetCode: true  },
+      LESSON_CAPTURE: { state: "PICK_TICKET", resetPlan: false, resetCode: false },
       ISSUE_SWEEP:  { state: "PICK_TICKET", resetPlan: false, resetCode: false },  // T-128: post-complete, restart sweep
     };
     const mapping = recoveryMapping[resumeState] ?? { state: "PICK_TICKET", resetPlan: false, resetCode: false };
