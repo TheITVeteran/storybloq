@@ -1304,6 +1304,42 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
         ? "You are in plan mode — session ends after plan review approval."
         : "You are in guided mode — single ticket, full pipeline.";
 
+  // ISS-057: Call stage's enter() for stage-specific instruction instead of generic fallback
+  const resumeStage = getStage(resumeState);
+  if (resumeStage) {
+    const recipe = resolveRecipeFromState(written);
+    const ctx = new StageContext(root, info.dir, written, recipe);
+    const enterResult = await resumeStage.enter(ctx);
+
+    if (isStageAdvance(enterResult)) {
+      // COMPLETE auto-advances, VERIFY may auto-skip
+      return processAdvance(ctx, resumeStage, enterResult);
+    }
+
+    return guideResult(ctx.state, resumeState, {
+      instruction: [
+        "# Resumed After Compact",
+        "",
+        `Session restored at state: **${resumeState}**.`,
+        written.ticket ? `Working on: **${written.ticket.id}: ${written.ticket.title}**` : "",
+        "",
+        modeContext,
+        "",
+        "---",
+        "",
+        enterResult.instruction,
+      ].filter(Boolean).join("\n"),
+      reminders: [
+        ...(enterResult.reminders ?? []),
+        ...(resumeMode === "auto"
+          ? ["Do NOT use plan mode.", "Do NOT stop or summarize."]
+          : [`This is ${resumeMode} mode.`]),
+        "Call autonomous_guide after completing each step.",
+      ],
+    });
+  }
+
+  // Stage not registered — fall back to generic instruction
   return guideResult(written, resumeState, {
     instruction: [
       "# Resumed After Compact",
