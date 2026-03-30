@@ -65,6 +65,24 @@ export class FinalizeStage implements WorkflowStage {
   }
 
   private async handleStage(ctx: StageContext, report: GuideReportInput): Promise<StageAdvance> {
+    const checkpoint = ctx.state.finalizeCheckpoint;
+
+    // ISS-063: If already staged (override or not), skip overlap and return
+    // the pre-commit instruction idempotently. Prevents infinite loop when
+    // agent re-reports files_staged after a successful override.
+    if (checkpoint === "staged" || checkpoint === "staged_override") {
+      return {
+        action: "retry",
+        instruction: [
+          "Files staged. Now run pre-commit checks.",
+          "",
+          'Run any pre-commit hooks or linting, then call me with completedAction: "precommit_passed".',
+          'If pre-commit fails, fix the issues, re-stage, and call me with completedAction: "files_staged" again.',
+        ].join("\n"),
+        reminders: ["Verify staged set is intact after pre-commit hooks."],
+      };
+    }
+
     const stagedResult = await gitDiffCachedNames(ctx.root);
     if (!stagedResult.ok || stagedResult.data.length === 0) {
       // ISS-046: Check if agent already committed (staging area empty because commit happened)
@@ -91,11 +109,18 @@ export class FinalizeStage implements WorkflowStage {
       return { action: "retry", instruction: 'No files are staged. Stage your changes and call me again with completedAction: "files_staged".' };
     }
 
-    // ISS-025: Overlap detection — block staging of pre-existing untracked files
+    // ISS-025 + ISS-063: Overlap detection — block staging of pre-existing untracked files.
+    // Exclude the current session's ticket file from overlap (the guide picked this ticket,
+    // so its .story/ file is expected even if it was untracked at session start).
     const baselineUntracked = ctx.state.git.baseline?.untrackedPaths ?? [];
     let overlapOverridden = false;
     if (baselineUntracked.length > 0) {
-      const overlap = stagedResult.data.filter((f: string) => baselineUntracked.includes(f));
+      const sessionTicketPath = ctx.state.ticket?.id
+        ? `.story/tickets/${ctx.state.ticket.id}.json`
+        : null;
+      const overlap = stagedResult.data.filter(
+        (f: string) => baselineUntracked.includes(f) && f !== sessionTicketPath,
+      );
       if (overlap.length > 0) {
         if (report.overrideOverlap) {
           overlapOverridden = true;
@@ -151,11 +176,16 @@ export class FinalizeStage implements WorkflowStage {
       return { action: "retry", instruction: 'Pre-commit hooks appear to have cleared the staging area. Re-stage your changes and call me with completedAction: "files_staged".' };
     }
 
-    // ISS-025: Re-check overlap after hooks (skip if user previously overrode)
+    // ISS-025 + ISS-063: Re-check overlap after hooks (skip if user previously overrode)
     if (checkpoint !== "staged_override") {
       const baselineUntracked = ctx.state.git.baseline?.untrackedPaths ?? [];
       if (baselineUntracked.length > 0) {
-        const overlap = stagedResult.data.filter((f: string) => baselineUntracked.includes(f));
+        const sessionTicketPath = ctx.state.ticket?.id
+          ? `.story/tickets/${ctx.state.ticket.id}.json`
+          : null;
+        const overlap = stagedResult.data.filter(
+          (f: string) => baselineUntracked.includes(f) && f !== sessionTicketPath,
+        );
         if (overlap.length > 0) {
           ctx.writeState({ finalizeCheckpoint: null });
           return { action: "retry", instruction: `Pre-commit hooks staged pre-existing untracked files: ${overlap.join(", ")}. Unstage them and re-stage, then call with completedAction: "files_staged".` };
