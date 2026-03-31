@@ -8,6 +8,7 @@
     "CODE_REVIEW": { "backends": ["codex", "agent"] },
     "WRITE_TESTS": { "enabled": true, "command": "npm test", "onExhaustion": "plan" },
     "TEST": { "enabled": true, "command": "npm test" },
+    "BUILD": { "enabled": false, "command": "npm run build" },
     "VERIFY": { "enabled": false, "startCommand": "npm run dev", "readinessUrl": "http://localhost:3000", "endpoints": [] },
     "LESSON_CAPTURE": { "enabled": false },
     "ISSUE_SWEEP": { "enabled": false }

@@ -30,6 +30,7 @@ export class ImplementStage implements WorkflowStage {
       reminders: [
         "Follow the plan exactly. Do NOT deviate without re-planning.",
         "Do NOT ask the user for confirmation.",
+        "If you discover pre-existing bugs, failing tests not caused by your changes, or other out-of-scope problems, file them as issues using claudestory_issue_create. Do not fix them inline.",
       ],
       transitionedFrom: ctx.state.previousState ?? undefined,
     };

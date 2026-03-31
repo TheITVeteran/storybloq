@@ -391,6 +391,7 @@ export const SessionStateSchema = z.object({
   }).nullable().default(null),
   testRetryCount: z.number().default(0),
   writeTestsRetryCount: z.number().default(0),
+  buildRetryCount: z.number().default(0),
   verifyRetryCount: z.number().default(0),
   verifyAutoDetected: z.boolean().default(false),
 

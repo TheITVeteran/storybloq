@@ -39,10 +39,16 @@ export class CodeReviewStage implements WorkflowStage {
         "",
         "**IMPORTANT:** Pass the FULL unified diff output to the reviewer. Do NOT summarize, compress, or truncate the diff.",
         "",
+        "If the diff exceeds ~500 lines, split into file-scoped diffs (`git diff <mergebase> -- <filepath>`) and run separate review calls for each chunk. Pass the same session_id to maintain context.",
+        "",
         `Run a code review using **${reviewer}**.`,
         "When done, report verdict and findings.",
       ].join("\n"),
-      reminders: [diffReminder, "Do NOT compress or summarize the diff."],
+      reminders: [
+        diffReminder,
+        "Do NOT compress or summarize the diff.",
+        "If the reviewer flags pre-existing issues unrelated to your changes, file them as issues using claudestory_issue_create with severity and impact. Do not fix them in this ticket.",
+      ],
       transitionedFrom: ctx.state.previousState ?? undefined,
     };
   }
