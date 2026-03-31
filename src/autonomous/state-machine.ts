@@ -7,7 +7,7 @@ import type { WorkflowState } from "./session-types.js";
 const TRANSITIONS: Record<WorkflowState, readonly (WorkflowState | "*")[]> = {
   INIT:          ["PICK_TICKET"],         // start does INIT + LOAD_CONTEXT internally
   LOAD_CONTEXT:  ["PICK_TICKET"],         // internal (never seen by Claude)
-  PICK_TICKET:   ["PLAN", "SESSION_END"],
+  PICK_TICKET:   ["PLAN", "ISSUE_FIX", "SESSION_END"],
   PLAN:          ["PLAN_REVIEW"],
   PLAN_REVIEW:   ["IMPLEMENT", "WRITE_TESTS", "PLAN", "PLAN_REVIEW", "SESSION_END"],   // approve → IMPLEMENT/WRITE_TESTS, reject → PLAN, stay for next round; SESSION_END for tiered exit
   IMPLEMENT:     ["CODE_REVIEW", "TEST"],  // TEST when test stage enabled
@@ -15,8 +15,9 @@ const TRANSITIONS: Record<WorkflowState, readonly (WorkflowState | "*")[]> = {
   TEST:          ["CODE_REVIEW", "IMPLEMENT", "TEST"],  // pass → CODE_REVIEW, fail → IMPLEMENT, retry
   CODE_REVIEW:   ["VERIFY", "FINALIZE", "IMPLEMENT", "PLAN", "CODE_REVIEW", "SESSION_END"], // approve → VERIFY/FINALIZE, reject → IMPLEMENT/PLAN, stay for next round; SESSION_END for tiered exit
   VERIFY:        ["FINALIZE", "IMPLEMENT", "VERIFY"],  // pass → FINALIZE, fail → IMPLEMENT, retry
-  FINALIZE:      ["COMPLETE"],
+  FINALIZE:      ["COMPLETE", "PICK_TICKET"],  // PICK_TICKET for issue-fix flow (bypass COMPLETE)
   COMPLETE:      ["PICK_TICKET", "HANDOVER", "ISSUE_SWEEP", "SESSION_END"],
+  ISSUE_FIX:     ["FINALIZE", "PICK_TICKET", "ISSUE_FIX"],  // T-153: fix done → FINALIZE, cancel → PICK_TICKET, retry self
   LESSON_CAPTURE: ["ISSUE_SWEEP", "HANDOVER", "LESSON_CAPTURE"],  // advance → ISSUE_SWEEP, retry self, done → HANDOVER
   ISSUE_SWEEP:   ["ISSUE_SWEEP", "HANDOVER", "PICK_TICKET"],  // retry (next issue), done → HANDOVER, loop → PICK_TICKET
   HANDOVER:      ["COMPACT", "SESSION_END", "PICK_TICKET"],

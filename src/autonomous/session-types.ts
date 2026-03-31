@@ -22,6 +22,7 @@ export type WorkflowState =
   | "HANDOVER"
   | "COMPLETE"
   | "LESSON_CAPTURE"
+  | "ISSUE_FIX"
   | "ISSUE_SWEEP"
   | "SESSION_END";
 
@@ -43,6 +44,7 @@ const WORKING_STATES: ReadonlySet<string> = new Set([
   "FINALIZE",
   "COMPACT",
   "LESSON_CAPTURE",
+  "ISSUE_FIX",
   "ISSUE_SWEEP",
 ]);
 
@@ -99,6 +101,11 @@ export interface SessionState {
     readonly title: string;
     readonly risk?: string;
   };
+  readonly currentIssue?: {
+    readonly id: string;
+    readonly title: string;
+    readonly severity: string;
+  } | null;
   readonly completedTickets?: ReadonlyArray<{ readonly id: string }>;
   readonly contextPressure?: {
     readonly level: string;
@@ -152,7 +159,7 @@ export const WORKFLOW_STATES = [
   "PLAN", "PLAN_REVIEW",
   "IMPLEMENT", "WRITE_TESTS", "TEST", "CODE_REVIEW", "BUILD", "VERIFY",
   "FINALIZE", "COMPACT",
-  "HANDOVER", "COMPLETE", "LESSON_CAPTURE", "ISSUE_SWEEP", "SESSION_END",
+  "HANDOVER", "COMPLETE", "LESSON_CAPTURE", "ISSUE_FIX", "ISSUE_SWEEP", "SESSION_END",
 ] as const;
 
 export const WorkflowStateSchema = z.enum(WORKFLOW_STATES);
@@ -283,6 +290,16 @@ export const SessionStateSchema = z.object({
       timestamp: z.string(),
     })).default([]),
   }).default({ plan: [], code: [] }),
+
+  // T-153: Current issue being fixed (null when working on a ticket)
+  currentIssue: z.object({
+    id: z.string(),
+    title: z.string(),
+    severity: z.string(),
+  }).nullable().default(null),
+
+  // T-153: Issues resolved this session
+  resolvedIssues: z.array(z.string()).default([]),
 
   // Completed tickets this session
   completedTickets: z.array(z.object({
@@ -425,6 +442,7 @@ export const SESSION_MODES = ["auto", "review", "plan", "guided"] as const;
 export interface GuideReportInput {
   readonly completedAction: string;
   readonly ticketId?: string;
+  readonly issueId?: string;  // T-153: issue pick in PICK_TICKET
   readonly commitHash?: string;
   readonly handoverContent?: string;
   readonly verdict?: string;

@@ -13,7 +13,7 @@ export class PickTicketStage implements WorkflowStage {
   readonly id = "PICK_TICKET";
 
   async enter(ctx: StageContext): Promise<StageResult> {
-    // Initial enter — provide ticket candidates
+    // Initial enter — provide ticket candidates + high-severity issues (T-153)
     const { state: projectState } = await ctx.loadProject();
     const { nextTickets } = await import("../../core/queries.js");
     const candidates = nextTickets(projectState, 5);
@@ -25,34 +25,64 @@ export class PickTicketStage implements WorkflowStage {
       ).join("\n");
     }
 
+    // T-153: Surface high/critical open issues
+    const highIssues = projectState.issues.filter(
+      i => i.status === "open" && (i.severity === "critical" || i.severity === "high"),
+    );
+    let issuesText = "";
+    if (highIssues.length > 0) {
+      issuesText = "\n\n## Open Issues (high+ severity)\n\n" + highIssues.map(
+        (i, idx) => `${idx + 1}. **${i.id}: ${i.title}** (${i.severity})`,
+      ).join("\n");
+    }
+
     const topCandidate = candidates.kind === "found" ? candidates.candidates[0] : null;
+    const hasIssues = highIssues.length > 0;
 
     return {
       instruction: [
-        "# Pick a Ticket",
+        "# Pick a Ticket or Issue",
+        "",
+        "## Ticket Candidates",
         "",
         candidatesText || "No ticket candidates found.",
+        issuesText,
         "",
         topCandidate
-          ? `Pick **${topCandidate.ticket.id}** (highest priority) by calling \`claudestory_autonomous_guide\` now:`
-          : "Pick a ticket by calling `claudestory_autonomous_guide` now:",
+          ? `Pick **${topCandidate.ticket.id}** (highest priority) or an open issue by calling \`claudestory_autonomous_guide\` now:`
+          : hasIssues
+            ? `Pick an issue to fix by calling \`claudestory_autonomous_guide\` now:`
+            : "Pick a ticket by calling `claudestory_autonomous_guide` now:",
         '```json',
         topCandidate
           ? `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "${topCandidate.ticket.id}" } }`
           : `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "T-XXX" } }`,
         '```',
+        ...(hasIssues ? [
+          "",
+          "Or to fix an issue:",
+          '```json',
+          `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "issue_picked", "issueId": "${highIssues[0].id}" } }`,
+          '```',
+        ] : []),
       ].join("\n"),
       reminders: [
-        "Do NOT stop or summarize. Call autonomous_guide IMMEDIATELY to pick a ticket.",
+        "Do NOT stop or summarize. Call autonomous_guide IMMEDIATELY to pick a ticket or issue.",
         "Do NOT ask the user for confirmation.",
       ],
     };
   }
 
   async report(ctx: StageContext, report: GuideReportInput): Promise<StageAdvance> {
+    // T-153: Accept issueId for issue-fix flow
+    const issueId = report.issueId;
+    if (issueId) {
+      return this.handleIssuePick(ctx, issueId);
+    }
+
     const ticketId = report.ticketId;
     if (!ticketId) {
-      return { action: "retry", instruction: "report.ticketId is required when picking a ticket." };
+      return { action: "retry", instruction: "report.ticketId or report.issueId is required." };
     }
 
     // Validate ticket
@@ -106,5 +136,27 @@ export class PickTicketStage implements WorkflowStage {
         transitionedFrom: "PICK_TICKET",
       },
     };
+  }
+
+  // T-153: Handle issue pick -- validate and route to ISSUE_FIX
+  private async handleIssuePick(ctx: StageContext, issueId: string): Promise<StageAdvance> {
+    const { state: projectState } = await ctx.loadProject();
+    const issue = projectState.issues.find(i => i.id === issueId);
+
+    if (!issue) {
+      return { action: "retry", instruction: `Issue ${issueId} not found. Pick a valid issue or ticket.` };
+    }
+    if (issue.status !== "open") {
+      return { action: "retry", instruction: `Issue ${issueId} is ${issue.status}. Pick an open issue.` };
+    }
+
+    ctx.updateDraft({
+      currentIssue: { id: issue.id, title: issue.title, severity: issue.severity },
+      ticket: undefined,
+      reviews: { plan: [], code: [] },
+      finalizeCheckpoint: null,
+    });
+
+    return { action: "goto", target: "ISSUE_FIX" };
   }
 }

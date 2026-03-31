@@ -26,10 +26,15 @@ export class FinalizeStage implements WorkflowStage {
         "Code review passed. Time to commit.",
         "",
         ctx.state.ticket ? `1. Update ticket ${ctx.state.ticket.id} status to "complete" in .story/` : "",
-        "2. Stage only the files you created or modified for this ticket (code + .story/ changes). Do NOT use `git add -A` or `git add .`",
+        ctx.state.currentIssue ? `1. Ensure issue ${ctx.state.currentIssue.id} status is "resolved" in .story/issues/` : "",
+        "2. Stage only the files you created or modified for this work (code + .story/ changes). Do NOT use `git add -A` or `git add .`",
         "3. Call me with completedAction: \"files_staged\"",
       ].filter(Boolean).join("\n"),
-      reminders: ["Stage both code changes and .story/ ticket update in the same commit. Only stage files related to this ticket."],
+      reminders: [
+        ctx.state.currentIssue
+          ? "Stage both code changes and .story/ issue update in the same commit. Only stage files related to this fix."
+          : "Stage both code changes and .story/ ticket update in the same commit. Only stage files related to this ticket.",
+      ],
       transitionedFrom: ctx.state.previousState ?? undefined,
     };
   }
@@ -90,15 +95,26 @@ export class FinalizeStage implements WorkflowStage {
       const previousHead = ctx.state.git.expectedHead ?? ctx.state.git.initHead;
       if (headResult.ok && previousHead && headResult.data.hash !== previousHead) {
         // HEAD advanced — agent committed before reporting files_staged
-        // Validate commit contains ticket file if applicable
+        // Validate commit contains ticket/issue file if applicable
+        const treeResult = await gitDiffTreeNames(ctx.root, headResult.data.hash);
         const ticketId = ctx.state.ticket?.id;
         if (ticketId) {
-          const treeResult = await gitDiffTreeNames(ctx.root, headResult.data.hash);
           const ticketPath = `.story/tickets/${ticketId}.json`;
           if (treeResult.ok && !treeResult.data.includes(ticketPath)) {
             return {
               action: "retry",
               instruction: `Commit detected (${headResult.data.hash.slice(0, 7)}) but ticket file ${ticketPath} is not in the commit. Amend the commit to include it: \`git add ${ticketPath} && git commit --amend --no-edit\`, then report completedAction: "commit_done" with the new hash.`,
+            };
+          }
+        }
+        // T-153: Validate issue file in commit (issue-fix mode)
+        const earlyIssueId = ctx.state.currentIssue?.id;
+        if (earlyIssueId) {
+          const issuePath = `.story/issues/${earlyIssueId}.json`;
+          if (treeResult.ok && !treeResult.data.includes(issuePath)) {
+            return {
+              action: "retry",
+              instruction: `Commit detected (${headResult.data.hash.slice(0, 7)}) but issue file ${issuePath} is not in the commit. Amend the commit to include it: \`git add ${issuePath} && git commit --amend --no-edit\`, then report completedAction: "commit_done" with the new hash.`,
             };
           }
         }
@@ -141,6 +157,18 @@ export class FinalizeStage implements WorkflowStage {
         return {
           action: "retry",
           instruction: `Ticket file ${ticketPath} is not staged. Run \`git add ${ticketPath}\` and call me again with completedAction: "files_staged".`,
+        };
+      }
+    }
+
+    // T-153: Validate issue file is in staged set (issue-fix mode)
+    const issueId = ctx.state.currentIssue?.id;
+    if (issueId) {
+      const issuePath = `.story/issues/${issueId}.json`;
+      if (!stagedResult.data.includes(issuePath)) {
+        return {
+          action: "retry",
+          instruction: `Issue file ${issuePath} is not staged. Run \`git add ${issuePath}\` and call me again with completedAction: "files_staged".`,
         };
       }
     }
@@ -205,6 +233,18 @@ export class FinalizeStage implements WorkflowStage {
       }
     }
 
+    // T-153: Re-validate issue file after hooks (issue-fix mode)
+    const precommitIssueId = ctx.state.currentIssue?.id;
+    if (precommitIssueId) {
+      const issuePath = `.story/issues/${precommitIssueId}.json`;
+      if (!stagedResult.data.includes(issuePath)) {
+        return {
+          action: "retry",
+          instruction: `Pre-commit hooks may have modified the staged set. Issue file ${issuePath} is no longer staged. Run \`git add ${issuePath}\` and call me again with completedAction: "files_staged".`,
+        };
+      }
+    }
+
     ctx.writeState({ finalizeCheckpoint: "precommit_passed" });
 
     return {
@@ -253,6 +293,26 @@ export class FinalizeStage implements WorkflowStage {
       return { action: "retry", instruction: `No new commit detected: HEAD (${normalizedHash}) has not changed. Create a commit first, then report the new hash.` };
     }
 
+    // T-153: Issue-fix mode -- record resolved issue, route to PICK_TICKET
+    const currentIssue = ctx.state.currentIssue;
+    if (currentIssue) {
+      ctx.writeState({
+        finalizeCheckpoint: "committed",
+        resolvedIssues: [...(ctx.state.resolvedIssues ?? []), currentIssue.id],
+        currentIssue: null,
+        git: {
+          ...ctx.state.git,
+          mergeBase: normalizedHash,
+          expectedHead: normalizedHash,
+        },
+      });
+
+      ctx.appendEvent("commit", { commitHash: normalizedHash, issueId: currentIssue.id });
+
+      return { action: "goto", target: "PICK_TICKET" };
+    }
+
+    // Normal ticket-fix mode
     const completedTicket = ctx.state.ticket
       ? { id: ctx.state.ticket.id, title: ctx.state.ticket.title, commitHash: normalizedHash, risk: ctx.state.ticket.risk, realizedRisk: ctx.state.ticket.realizedRisk }
       : undefined;

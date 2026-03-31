@@ -64,6 +64,7 @@ export const RECOVERY_MAPPING: Readonly<Record<string, { state: string; resetPla
   CODE_REVIEW:    { state: "PLAN",        resetPlan: true,  resetCode: true  },
   FINALIZE:       { state: "IMPLEMENT",   resetPlan: false, resetCode: true  },
   LESSON_CAPTURE: { state: "PICK_TICKET", resetPlan: false, resetCode: false },
+  ISSUE_FIX:      { state: "PICK_TICKET", resetPlan: false, resetCode: false },
   ISSUE_SWEEP:    { state: "PICK_TICKET", resetPlan: false, resetCode: false },
 };
 
@@ -839,14 +840,26 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       candidatesText = "No tickets found.";
     }
 
+    // T-153: Surface high/critical issues alongside ticket candidates
+    const highIssues = projectState.issues.filter(
+      i => i.status === "open" && (i.severity === "critical" || i.severity === "high"),
+    );
+    let issuesText = "";
+    if (highIssues.length > 0) {
+      issuesText = "\n\n## Open Issues (high+ severity)\n\n" + highIssues.map(
+        (i, idx) => `${idx + 1}. **${i.id}: ${i.title}** (${i.severity})`,
+      ).join("\n");
+    }
+
     // Also get recommendations (with handover + snapshot context for ISS-018/019)
     const guideRecOptions = buildGuideRecommendOptions(root);
     const recResult = recommend(projectState, 5, guideRecOptions);
     let recsText = "";
     if (recResult.recommendations.length > 0) {
-      const ticketRecs = recResult.recommendations.filter((r) => r.kind === "ticket");
-      if (ticketRecs.length > 0) {
-        recsText = "\n\n**Recommended:**\n" + ticketRecs.map((r) =>
+      // T-153: Include issues alongside tickets in recommendations (no more ticket-only filter)
+      const actionableRecs = recResult.recommendations.filter((r) => r.kind === "ticket" || r.kind === "issue");
+      if (actionableRecs.length > 0) {
+        recsText = "\n\n**Recommended:**\n" + actionableRecs.map((r) =>
           `- ${r.id}: ${r.title} (${r.reason})`,
         ).join("\n");
       }
@@ -876,25 +889,36 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       ? ` A checkpoint handover will be saved every ${interval} tickets.`
       : "";
 
+    const hasHighIssues = highIssues.length > 0;
     const instruction = [
       "# Autonomous Session Started",
       "",
       `You are now in autonomous mode. ${sessionDesc}${checkpointDesc}`,
-      "Do NOT stop to summarize. Do NOT ask the user. Pick a ticket and start working immediately.",
+      "Do NOT stop to summarize. Do NOT ask the user. Pick a ticket or issue and start working immediately.",
       "",
       "## Ticket Candidates",
       "",
       candidatesText,
+      issuesText,
       recsText,
       "",
       topCandidate
-        ? `Pick **${topCandidate.ticket.id}** (highest priority) by calling \`claudestory_autonomous_guide\` now:`
-        : "Pick a ticket by calling `claudestory_autonomous_guide` now:",
+        ? `Pick **${topCandidate.ticket.id}** (highest priority) or an open issue by calling \`claudestory_autonomous_guide\` now:`
+        : hasHighIssues
+          ? "Pick an issue to fix by calling `claudestory_autonomous_guide` now:"
+          : "Pick a ticket by calling `claudestory_autonomous_guide` now:",
       '```json',
       topCandidate
         ? `{ "sessionId": "${updated.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "${topCandidate.ticket.id}" } }`
         : `{ "sessionId": "${updated.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "T-XXX" } }`,
       '```',
+      ...(hasHighIssues ? [
+        "",
+        "Or to fix an issue:",
+        '```json',
+        `{ "sessionId": "${updated.sessionId}", "action": "report", "report": { "completedAction": "issue_picked", "issueId": "${highIssues[0].id}" } }`,
+        '```',
+      ] : []),
     ].join("\n");
 
     return guideResult(updated, "PICK_TICKET", {
