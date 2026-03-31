@@ -87,7 +87,16 @@ export class CompleteStage implements WorkflowStage {
     const { state: projectState } = await ctx.loadProject();
     const nextResult = nextTickets(projectState, 1);
     if (nextResult.kind !== "found") {
-      nextTarget = "HANDOVER";
+      // T-153: Before ending, check for high/critical open issues
+      const highIssues = projectState.issues.filter(
+        i => i.status === "open" && (i.severity === "critical" || i.severity === "high"),
+      );
+      if (highIssues.length > 0) {
+        // Route to PICK_TICKET where issue surfacing will present them
+        nextTarget = "PICK_TICKET";
+      } else {
+        nextTarget = "HANDOVER";
+      }
     }
 
     if (nextTarget === "HANDOVER") {

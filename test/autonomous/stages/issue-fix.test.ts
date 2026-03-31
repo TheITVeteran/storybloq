@@ -347,6 +347,63 @@ describe("FINALIZE: issue-mode", () => {
 // Session state fields
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// COMPLETE: routes to PICK_TICKET when high issues exist but no tickets
+// ---------------------------------------------------------------------------
+
+describe("COMPLETE: issue-aware routing", () => {
+  it("routes to PICK_TICKET when no tickets remain but high issues exist", async () => {
+    // Mark the only ticket as complete
+    writeFileSync(join(testRoot, ".story", "tickets", "T-001.json"), JSON.stringify({
+      id: "T-001", title: "Test ticket", type: "task", status: "complete",
+      phase: "p1", order: 10, description: "", createdDate: "2026-03-30",
+      completedDate: "2026-03-30", blockedBy: [], parentTicket: null,
+    }));
+
+    const { CompleteStage } = await import("../../../src/autonomous/stages/complete.js");
+    const stage = new CompleteStage();
+    const state = makeState({
+      state: "COMPLETE",
+      completedTickets: [{ id: "T-001", title: "Test ticket" }],
+      config: { maxTicketsPerSession: 0, compactThreshold: "high", reviewBackends: [] },
+    });
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    const advance = await stage.enter(ctx);
+    // Should route to PICK_TICKET (not HANDOVER) because ISS-001 is high severity
+    expect((advance as { target?: string }).target).toBe("PICK_TICKET");
+  });
+
+  it("routes to HANDOVER when no tickets and no high issues", async () => {
+    // Mark the only ticket as complete
+    writeFileSync(join(testRoot, ".story", "tickets", "T-001.json"), JSON.stringify({
+      id: "T-001", title: "Test ticket", type: "task", status: "complete",
+      phase: "p1", order: 10, description: "", createdDate: "2026-03-30",
+      completedDate: "2026-03-30", blockedBy: [], parentTicket: null,
+    }));
+    // Remove high-severity issues, keep only low
+    writeFileSync(join(testRoot, ".story", "issues", "ISS-001.json"), JSON.stringify({
+      id: "ISS-001", title: "Critical bug", status: "resolved", severity: "critical",
+      components: [], impact: "Fixed", resolution: "Done", resolvedDate: "2026-03-30",
+      discoveredDate: "2026-03-30", relatedTickets: [], location: [],
+    }));
+
+    const { CompleteStage } = await import("../../../src/autonomous/stages/complete.js");
+    const stage = new CompleteStage();
+    const state = makeState({
+      state: "COMPLETE",
+      completedTickets: [{ id: "T-001", title: "Test ticket" }],
+      config: { maxTicketsPerSession: 0, compactThreshold: "high", reviewBackends: [] },
+    });
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    const advance = await stage.enter(ctx);
+    // ISS-001 resolved, ISS-002 is low severity -- should route to HANDOVER (or postComplete)
+    const target = (advance as { target?: string }).target;
+    expect(target).not.toBe("PICK_TICKET");
+  });
+});
+
 describe("session state: issue fields", () => {
   it("currentIssue defaults to null", () => {
     const state = makeState();

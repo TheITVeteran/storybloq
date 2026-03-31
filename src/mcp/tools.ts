@@ -715,6 +715,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
       report: z.object({
         completedAction: z.string().describe("What was completed"),
         ticketId: z.string().optional().describe("Ticket ID (for ticket_picked)"),
+        issueId: z.string().optional().describe("Issue ID (for issue_picked) — T-153"),
         commitHash: z.string().optional().describe("Git commit hash (for commit_done)"),
         handoverContent: z.string().optional().describe("Handover markdown content"),
         verdict: z.string().optional().describe("Review verdict: approve|revise|request_changes|reject"),
