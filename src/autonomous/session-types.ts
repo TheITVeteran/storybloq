@@ -15,6 +15,7 @@ export type WorkflowState =
   | "WRITE_TESTS"
   | "TEST"
   | "CODE_REVIEW"
+  | "BUILD"
   | "VERIFY"
   | "FINALIZE"
   | "COMPACT"
@@ -37,6 +38,7 @@ const WORKING_STATES: ReadonlySet<string> = new Set([
   "WRITE_TESTS",
   "TEST",
   "CODE_REVIEW",
+  "BUILD",
   "VERIFY",
   "FINALIZE",
   "COMPACT",
@@ -148,7 +150,7 @@ export type StatusPayload = StatusPayloadActive | StatusPayloadInactive;
 export const WORKFLOW_STATES = [
   "INIT", "LOAD_CONTEXT", "PICK_TICKET",
   "PLAN", "PLAN_REVIEW",
-  "IMPLEMENT", "WRITE_TESTS", "TEST", "CODE_REVIEW", "VERIFY",
+  "IMPLEMENT", "WRITE_TESTS", "TEST", "CODE_REVIEW", "BUILD", "VERIFY",
   "FINALIZE", "COMPACT",
   "HANDOVER", "COMPLETE", "LESSON_CAPTURE", "ISSUE_SWEEP", "SESSION_END",
 ] as const;

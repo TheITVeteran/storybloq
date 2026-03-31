@@ -4,7 +4,7 @@ import type { GuideReportInput } from "../session-types.js";
 const MAX_BUILD_RETRIES = 2;
 
 /**
- * BUILD stage - run the project build between CODE_REVIEW and VERIFY.
+ * BUILD stage - run the project build before FINALIZE (after CODE_REVIEW and VERIFY if enabled).
  * Conditional: skip() returns true when not enabled in recipe config.
  *
  * Catches bundler/build errors that typecheck and tests miss
@@ -52,10 +52,16 @@ export class BuildStage implements WorkflowStage {
     const exitCodeMatch = notes.match(/exit\s*(?:code[:\s]*)?\s*(\d+)/i);
     if (!exitCodeMatch) {
       const nextRetry = retryCount + 1;
-      if (nextRetry >= MAX_BUILD_RETRIES) {
+      if (nextRetry > MAX_BUILD_RETRIES) {
         ctx.writeState({ buildRetryCount: 0 });
         ctx.appendEvent("build_parse_exhausted", { retryCount: nextRetry });
-        return { action: "advance" };
+        return {
+          action: "advance",
+          result: {
+            instruction: `Could not parse build exit code after ${MAX_BUILD_RETRIES} retries. Proceeding, but build status is unknown.`,
+            reminders: ["Mention unknown build status in the commit message."],
+          },
+        };
       }
       ctx.writeState({ buildRetryCount: nextRetry });
       return { action: "retry", instruction: 'Could not parse exit code from notes. Include "exit code: 0" (or non-zero) in your notes.' };
@@ -81,6 +87,18 @@ export class BuildStage implements WorkflowStage {
 
     ctx.writeState({ buildRetryCount: 0 });
     ctx.appendEvent("build_failed_exhausted", { retryCount, notes: notes.slice(0, 200) });
-    return { action: "advance" };
+    return {
+      action: "advance",
+      result: {
+        instruction: [
+          "# Build Failed - Proceeding",
+          "",
+          `Build failed after ${MAX_BUILD_RETRIES} retries. Proceeding but build errors remain.`,
+          "",
+          "Document the build failure in the commit message.",
+        ].join("\n"),
+        reminders: ["Mention build failure in the commit message."],
+      },
+    };
   }
 }

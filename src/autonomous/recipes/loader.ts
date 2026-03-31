@@ -111,6 +111,14 @@ export function resolveRecipe(
     }
   }
 
+  // BUILD: insert BEFORE FINALIZE (catches bundler errors that typecheck misses)
+  if ((stages.BUILD as Record<string, unknown>)?.enabled) {
+    const finalizeIdx = pipeline.indexOf("FINALIZE");
+    if (finalizeIdx !== -1 && !pipeline.includes("BUILD")) {
+      pipeline.splice(finalizeIdx, 0, "BUILD");
+    }
+  }
+
   // TEST: insert AFTER IMPLEMENT (verify tests pass post-implementation)
   if ((stages.TEST as Record<string, unknown>)?.enabled) {
     const implementIdx = pipeline.indexOf("IMPLEMENT");
