@@ -4,7 +4,7 @@
  * Extracts the minimum needed from .story/sessions/ without importing
  * the autonomous subsystem, avoiding an inverted dependency.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 
 export interface ActiveSessionSummary {
@@ -21,9 +21,9 @@ export interface ActiveSessionSummary {
  */
 export function scanActiveSessions(root: string): readonly ActiveSessionSummary[] {
   const sessDir = join(root, ".story", "sessions");
-  let entries: ReturnType<typeof readdirSync>;
+  let entries: Dirent[];
   try {
-    entries = readdirSync(sessDir, { withFileTypes: true });
+    entries = readdirSync(sessDir, { withFileTypes: true }) as Dirent[];
   } catch {
     return [];
   }
