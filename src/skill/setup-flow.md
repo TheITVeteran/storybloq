@@ -436,7 +436,7 @@ After refinement, run an independent review of the full proposal (phases, ticket
 - question: "Write project governance files?"
 - header: "Files"
 - options:
-  - "Write both" -- CLAUDE.md and RULES.md
+  - "Write both (Recommended)" -- CLAUDE.md and RULES.md
   - "CLAUDE.md only"
   - "RULES.md only"
   - "Skip" -- I'll write them manually
