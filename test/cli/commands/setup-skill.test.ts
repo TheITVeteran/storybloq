@@ -118,8 +118,9 @@ describe("setup-skill", () => {
   // Support file content validation
   // -------------------------------------------------------------------------
 
-  it("setup-flow.md contains the AI-Assisted Setup Flow", async () => {
+  it("setup-flow.md contains all setup flow sections including T-165 additions", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    // Original sections
     expect(content).toContain("## AI-Assisted Setup Flow");
     expect(content).toContain("#### 1a. Detect Project Type");
     expect(content).toContain("#### 1b. Existing Project");
@@ -127,6 +128,47 @@ describe("setup-skill", () => {
     expect(content).toContain("#### 1d. Present Proposal");
     expect(content).toContain("#### 1e. Execute on Approval");
     expect(content).toContain("#### 1f. Post-Setup");
+    // T-165 additions
+    expect(content).toContain("#### 1d2. Refinement Pass");
+    expect(content).toContain("#### 1d3. Proposal Review");
+  });
+
+  it("setup-flow.md 1b includes brief/PRD scan", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Project brief / PRD scan");
+    expect(content).toContain("Brief precedence");
+  });
+
+  it("setup-flow.md 1d2 refinement covers descriptions, dependencies, sizing, and missing entities", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("blockedBy");
+    expect(content).toContain("Sizing check");
+    expect(content).toContain("Missing entity detection");
+    expect(content).toContain("Core differentiator detection");
+    expect(content).toContain("Undecided tech choices");
+  });
+
+  it("setup-flow.md 1d3 proposal review uses autonomous mode backend selection", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("review_plan");
+    expect(content).toContain("Maximum 2 review rounds");
+  });
+
+  it("setup-flow.md 1e includes two-pass creation and CLAUDE.md/RULES.md generation", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Pass 1:");
+    expect(content).toContain("Pass 2:");
+    expect(content).toContain("CLAUDE.md generation");
+    expect(content).toContain("RULES.md generation");
+    expect(content).toContain("Sanitization");
+  });
+
+  it("setup-flow.md refinement and review steps are opt-in", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    // Refinement is opt-in
+    expect(content).toMatch(/user declines.*skip to.*1e/i);
+    // Review is opt-in
+    expect(content).toMatch(/user declines.*skip to.*1e/i);
   });
 
   it("setup-flow.md has continue-to-Step-2 directive referencing SKILL.md", async () => {

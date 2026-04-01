@@ -43,6 +43,17 @@ Read these files to understand the project (skip any that don't exist, skip file
 4. **Top-level directory listing** -- identify major components (src/, test/, docs/, etc.)
 5. **Git summary** -- `git log --oneline -20` for recent work patterns
 6. **GitHub issues (ask user first)** -- `gh issue list --limit 30 --state open --json number,title,labels,body,createdAt`. If gh fails (auth, rate limit, no remote), skip cleanly and note "GitHub import skipped: [reason]"
+7. **Project brief / PRD scan** -- glob for `*.md` files in project root and `docs/`. For each candidate (exclude CHANGELOG, LICENSE, CONTRIBUTING, README which is already read above):
+   - If file is >100 lines and contains headings matching "entities", "schema", "architecture", "tech stack", "roadmap", "phases", "milestones", "screens", or "API" -- treat as a project brief
+   - Read at most 2 candidate briefs (prefer the longest matching file)
+   - Extract into structured notes for use in later steps: entity schemas (names, fields, relationships), technical decisions (stack choices, architecture), screen/page inventory, business rules and domain logic, key constraints
+   - Summarize once here; do not re-read the full brief at later steps
+
+**Brief precedence:** If multiple sources describe the project:
+- Existing `CLAUDE.md` is the authority for current project state
+- A PRD/brief file is the authority for proposed scope and specifications
+- README is a product overview (may be outdated or aspirational)
+- If two briefs disagree on stack, entities, or milestones, ask the user to choose
 
 **Framework-specific deep scan** -- after detecting the project type in 1a, scan deeper into framework conventions to understand architecture:
 
@@ -76,6 +87,7 @@ Read these files to understand the project (skip any that don't exist, skip file
 **Propose initial tickets** per active phase (2-5 each), based on:
 - README TODOs or roadmap sections (treat as hints, not ground truth)
 - GitHub issues if imported -- infer from label semantics: bug/defect labels -> issues, enhancement/feature labels -> tickets
+- Brief entity specs and roadmap sections (if a brief was found)
 - Obvious gaps (missing tests, no CI, no docs, etc.)
 - If more than 30 GitHub issues exist, note "Showing 30 of N. Additional issues can be imported later."
 
@@ -113,21 +125,93 @@ Then ask for approval with clear interaction guidance:
 
 I'll iterate until you're happy, then create everything."
 
+#### 1d2. Refinement Pass (optional)
+
+After the user approves the phase and ticket structure, offer: **"Want me to refine these tickets with detailed descriptions, dependencies, and sizing?"**
+
+If the user declines, skip to **1e. Execute on Approval** -- current behavior is preserved.
+
+If the user accepts, refine the proposal using the brief/PRD notes collected in step 1b:
+
+**Descriptions:** Extract specs from the brief into ticket descriptions -- entity fields, acceptance criteria, API contracts, business rules. Cap each description at 3-4 sentences. Keep them actionable, not exhaustive. The goal is "enough to implement without re-reading the brief."
+
+**Dependencies:** Infer `blockedBy` relationships from phase ordering and domain logic:
+- Schema/migration tickets block CRUD API tickets
+- Auth tickets block protected route tickets
+- CRUD/model tickets block business logic that depends on them
+- API tickets block UI tickets that consume them
+
+**Sizing check:** Flag tickets that cover more than one major concern:
+- Mentions 3+ distinct entities in one ticket
+- Covers both API implementation and UI in one ticket
+- Handles 3+ distinct models, modes, or billing types in one ticket
+- Offer to split flagged tickets into sub-tasks
+
+**Missing entity detection:** Cross-reference entities and concepts mentioned in the brief against the proposed ticket list. Flag entities that appear in the brief but have no corresponding ticket. Common misses: user profile/settings, notification system, seed data, admin/config screens.
+
+**Core differentiator detection:** Identify the ticket(s) covering what the brief emphasizes most (the main value proposition). If the core differentiator is a single ticket, flag it for decomposition -- it likely needs 3-4 sub-tickets.
+
+**Undecided tech choices:** Surface technology decisions mentioned in the brief as "X or Y" that haven't been resolved. Present them as explicit decisions to make before implementation starts (e.g., "ORM: Drizzle or Prisma -- decide before T-002").
+
+After refinement, present the updated proposal showing what changed: added descriptions, new blockedBy links, split tickets, newly created tickets for missing entities, and flagged decisions. Wait for the user to approve the refined proposal before continuing.
+
+#### 1d3. Proposal Review (optional)
+
+After refinement (or after initial approval if refinement was declined), offer: **"Want me to have this proposal independently reviewed before creating everything?"**
+
+If the user declines, skip to **1e. Execute on Approval**.
+
+If the user accepts, run an independent review of the full proposal (phases, tickets, descriptions, dependencies):
+
+**Backend selection:** Use the same review backend selection as autonomous mode -- if the `review_plan` MCP tool is available, use it (pass the full proposal as the plan document); otherwise spawn an independent Claude agent with the brief + proposal and ask it to audit for gaps, sizing issues, missing dependencies, and architectural concerns. If neither is available, skip review with a note.
+
+**Review cap:** Maximum 2 review rounds for setup proposals.
+
+**After review findings come back:**
+- Present ALL findings to the user as a summary diff: added tickets, changed descriptions, new dependencies, files to be generated.
+- User approves the final version before any execution. Do not auto-incorporate findings.
+- If the user requests changes based on findings, update the proposal and optionally re-review.
+
 #### 1e. Execute on Approval
+
+**Two-pass ticket creation:**
 
 1. Call `claudestory_init` with name, type, language -- after this, all MCP tools become available dynamically
 2. Call `claudestory_phase_create` for each phase -- first phase with `atStart: true`, subsequent with `after: <previous-phase-id>`
-3. Call `claudestory_ticket_create` for each ticket
+3. **Pass 1:** Call `claudestory_ticket_create` for each ticket WITHOUT `blockedBy` (ticket IDs don't exist until after creation)
 4. Call `claudestory_issue_create` for each imported GitHub issue
-5. Call `claudestory_ticket_update` to mark already-complete tickets as `complete`
-6. Call `claudestory_snapshot` to save initial baseline
+5. **Pass 2:** Call `claudestory_ticket_update` for each ticket that has `blockedBy` dependencies, now that all IDs exist. Validate: no cycles, no self-references.
+6. Call `claudestory_ticket_update` to mark already-complete tickets as `complete`
+7. Call `claudestory_snapshot` to save initial baseline
+
+**CLAUDE.md generation:** If a brief/PRD was read in step 1b AND no `CLAUDE.md` exists in the project root:
+
+Generate a `CLAUDE.md` capturing:
+- Project purpose (1-2 sentences)
+- Tech stack and key dependencies (including any pivots from the brief, with rationale)
+- Architecture decisions (from brief's technical decisions table, or inferred from stack)
+- Entity model summary (entity names + key relationships, not full field lists)
+- Key constraints and non-negotiables
+- Undecided tech choices (flagged as TBD with options)
+
+**Sanitization:** Never copy secrets, tokens, credentials, API keys, connection strings, customer-identifying data, or internal-only endpoints into generated files.
+
+Show a preview of the generated content to the user. Only write after explicit approval.
+
+**RULES.md generation:** If development constraints are derivable from the brief AND no `RULES.md` exists:
+
+Generate a `RULES.md` capturing:
+- Domain-specific rules (e.g., "all monetary calculations use fixed-point arithmetic, not floats")
+- API design constraints (versioning, auth requirements, response format)
+- Data integrity rules (soft deletes, audit trails, idempotency requirements)
+- Testing requirements for core business logic
+
+Same sanitization and preview rules as CLAUDE.md. Only write after explicit approval.
 
 #### 1f. Post-Setup
 
 After creation completes:
-- Confirm what was created (e.g., "Created 5 phases, 12 tickets, and 3 issues")
+- Confirm what was created (e.g., "Created 5 phases, 18 tickets, 3 issues, CLAUDE.md, and RULES.md")
 - Check if `.gitignore` includes `.story/snapshots/` (warn if missing -- snapshots should not be committed)
-- Suggest creating `CLAUDE.md` if it doesn't exist (project spec for AI sessions)
-- Suggest creating `RULES.md` if it doesn't exist (development constraints)
 - Write an initial handover documenting the setup decisions
 - Setup complete. Continue with **Step 2: Load Context** in SKILL.md (already in your context). Execute all 6 steps -- the project now has data to load.
