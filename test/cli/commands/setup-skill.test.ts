@@ -180,10 +180,10 @@ describe("setup-skill", () => {
   it("setup-flow.md refinement and review are a single escalating choice", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
     // One entry point, not two separate prompts
-    expect(content).toContain("How much refinement before creating");
+    expect(content).toContain("Want me to refine these before creating");
     expect(content).toContain("Create as-is");
-    expect(content).toContain("Refine tickets");
-    expect(content).toContain("Refine + independent review");
+    expect(content).toContain("Yes, refine them");
+    expect(content).toContain("Yes, refine + get a second opinion");
   });
 
   it("setup-flow.md has system shape and execution model as separate gates", async () => {

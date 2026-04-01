@@ -372,12 +372,12 @@ Re-show this `AskUserQuestion` after adjustments. Loop until "Looks good."
 #### 1d2. Refinement and Review
 
 After the user approves the proposal structure, use `AskUserQuestion` for refinement depth:
-- question: "How much refinement before creating?"
+- question: "Want me to refine these before creating?"
 - header: "Depth"
 - options:
-  - "Create as-is" -- skip refinement and review, execute immediately
-  - "Refine tickets" -- add descriptions, dependencies, sizing
-  - "Refine + independent review (if review tools available)" -- full pipeline
+  - "Create as-is" -- create tickets now with just titles
+  - "Yes, refine them" -- I'll add descriptions, figure out dependencies, and flag oversized tickets
+  - "Yes, refine + get a second opinion" -- I'll refine, then have an independent reviewer check my work
 
 If "Create as-is" and no brief exists: warn "Note: tickets will have titles only -- you can add descriptions later."
 
