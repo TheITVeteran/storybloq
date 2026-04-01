@@ -488,27 +488,47 @@ After creation completes:
 - Check if `.gitignore` includes `.story/snapshots/` (warn if missing -- snapshots should not be committed)
 - Write an initial handover documenting the setup decisions. Explicitly capture which gates were answered and what was chosen: surface, characteristics, stack, system shape, execution model, deployment, data model, domain complexity, auth model, sensitive domain, AI pattern/provider/processing (if applicable), design source. This handover is the source of truth for decisions; CLAUDE.md is the project description.
 
-Then briefly explain what the user can do now -- this is their first time using claudestory:
+Then show the user a compact guide to using the system. This is their first time -- make it visual and scannable. Present it as markdown output (not AskUserQuestion):
 
-"Your project is ready. Here's what you can do:
-- **`/story`** at the start of any session loads your full context automatically
-- **`/story auto`** runs autonomous mode -- I'll pick tickets, plan, review, implement, and commit in a loop
-- **`/story guided T-XXX`** walks through one ticket end-to-end with planning and code review
-- **`/story plan T-XXX`** helps plan a specific ticket before building"
+```
+Your project is ready. Here's how it works from here:
 
-Then use `AskUserQuestion`:
-- question: "What would you like to do now?"
-- header: "Next"
-- options:
-  - "Start building the first ticket" -- jump into T-001 (or first unblocked ticket)
-  - "Start autonomous mode" -- run `/story auto` to work through tickets automatically
-  - "Review the roadmap" -- see all phases, tickets, and dependencies
-  - "I'm done for now" -- end session
+## Daily Workflow
 
-If "Start building": continue with **Step 2: Load Context** in SKILL.md (already in your context), then proceed directly to the first unblocked ticket.
-If "Start autonomous mode": read `autonomous-mode.md` in the same directory as this skill file and follow the autonomous mode instructions.
-If "Review the roadmap": call `claudestory_status` and present a detailed overview of all phases and tickets.
-If "I'm done for now": end the session cleanly.
+  Start session → type /story → Claude loads full context → work → Claude writes handover → next session picks up
+
+Every session builds on the last. You never re-explain your project.
+
+## How to Work
+
+  /story                Just start here. I'll load context, show what changed,
+                        and suggest what to work on next.
+
+  /story auto           Autonomous mode. I pick tickets, plan, review, build,
+                        and commit -- looping until done. You watch.
+
+  /story guided T-XXX   One ticket, done right. I plan it, get it reviewed,
+                        build it, get the code reviewed, then commit.
+
+  /story plan T-XXX     Plan a ticket before building. Independent review included.
+
+  /story review T-XXX   Already wrote code? I'll review it.
+
+## What's in Your Project
+
+  .story/tickets/       Your work queue -- each ticket is a JSON file
+  .story/issues/        Bugs and gaps discovered during work
+  .story/handovers/     Session memory -- what was done, decided, learned
+  CLAUDE.md             Project spec -- Claude reads this first every session
+  RULES.md              Development rules -- constraints Claude follows
+
+## First Ticket
+
+  T-001: [title of first unblocked ticket]
+  Type /story to get started, or /story auto to let me handle it.
+```
+
+Do not show an AskUserQuestion after this. The guide tells the user everything they need to know -- they'll naturally type their next command.
 
 ---
 

@@ -290,10 +290,14 @@ describe("setup-skill", () => {
     expect(content).toContain("product default");
   });
 
-  it("setup-flow.md has continue-to-Step-2 directive referencing SKILL.md", async () => {
+  it("setup-flow.md post-setup shows quick guide with available modes", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
-    expect(content).toContain("Step 2: Load Context");
-    expect(content).toContain("SKILL.md");
+    expect(content).toContain("/story auto");
+    expect(content).toContain("/story guided");
+    expect(content).toContain("/story plan");
+    expect(content).toContain("/story review");
+    expect(content).toContain("Daily Workflow");
+    expect(content).toContain("First Ticket");
   });
 
   it("autonomous-mode.md contains autonomous and tiered mode sections", async () => {
