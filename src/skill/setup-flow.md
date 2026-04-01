@@ -370,26 +370,28 @@ If "Adjust first": ask what they want to change, iterate, then re-show this same
 
 If "Create as-is" and no brief exists: warn "Note: tickets will have titles only -- you can add descriptions later." Then proceed to **1e. Execute on Approval**.
 
-#### 1d2. Refinement and Review (internal -- user does not see intermediate steps)
+#### 1d2. Refinement and Review
 
-**This section runs silently.** The user already chose their depth. Do the work, then present the final result ONCE.
+**IMPORTANT: Do NOT skip this section. Do NOT go straight to creating tickets.** The user chose refinement and/or review. You must complete all steps below before moving to 1e (Execute).
 
-If a brief/PRD was found in step 1b, use those structured notes. If no brief exists (e.g., the user came through step 1c interview), infer descriptions from the interview answers and propose standard dependencies based on the tech stack.
+**Step A: Refine the proposal internally.** Do not show intermediate work to the user. Use brief/PRD notes from 1b, or infer from interview answers if no brief.
 
-**What refinement does (internally):**
-- Extract specs from the brief into ticket descriptions (3-4 sentences each, actionable)
-- Infer `blockedBy` from phase ordering and domain logic (schema before CRUD, auth before protected routes, CRUD before business logic, API before UI)
-- Flag and split oversized tickets (3+ entities, API+UI in one ticket, 3+ models)
+What to do:
+- Add 3-4 sentence descriptions to each ticket
+- Infer `blockedBy` from phase ordering and domain logic
+- Flag and split oversized tickets (3+ entities, API+UI in one, 3+ models)
 - Cross-reference brief entities against tickets, add missing ones
 - Detect core differentiator -- decompose if single ticket
 - Surface undecided tech choices
 
-**If "Refine + review":** After refinement, also run an independent review:
-- If `review_plan` MCP tool is available, use it. Otherwise spawn an independent Claude agent. If neither available, skip with a note.
+**Step B: Run independent review (if user chose "Refine + review").** This step is REQUIRED when the user selected the review option. Do NOT skip it.
+- If `review_plan` MCP tool is available, call it with the full refined proposal.
+- Otherwise spawn an independent Claude agent to audit for gaps.
+- If neither is available, note "Review skipped -- no review backends available."
 - Maximum 2 review rounds.
-- Incorporate all findings into the proposal. The user sees the final result, not the review process.
+- Incorporate findings into the proposal.
 
-**Present the final result ONCE.** Do NOT show every ticket with its description. Show a compact summary of what changed:
+**Step C: Show the compact summary to the user.** This is REQUIRED. Do NOT go to 1e without showing this. Do NOT show every ticket with its description -- show a summary of what changed:
 
 ```
 Refinement complete. Here's what changed:
@@ -413,13 +415,17 @@ Updated proposal:
 | ...    | ...                      | ...        | ...       |
 ```
 
-Then use `AskUserQuestion`:
+**Step D: Ask user to approve before creating.** This is REQUIRED. Do NOT proceed to 1e without this approval.
+
+Use `AskUserQuestion`:
 - question: "Ready to create?"
 - header: "Create"
 - options:
   - "Create everything (Recommended)"
   - "Let me adjust first" -- iterate, then re-ask
   - "Show me the full details" -- expand all ticket descriptions (for users who want to inspect)
+
+Only proceed to **1e. Execute on Approval** after the user selects "Create everything."
 
 #### 1e. Execute on Approval
 

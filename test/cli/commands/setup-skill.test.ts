@@ -184,9 +184,9 @@ describe("setup-skill", () => {
     expect(content).toContain("Refine + get a second opinion (Recommended)");
     expect(content).toContain("Create as-is");
     expect(content).toContain("Adjust first");
-    // Refinement runs silently, presents result once
-    expect(content).toContain("user does not see intermediate steps");
-    expect(content).toContain("Do NOT show every ticket with its description");
+    // Refinement has explicit steps A-D with required gates
+    expect(content).toContain("Do NOT skip this section");
+    expect(content).toContain("Step D: Ask user to approve before creating");
   });
 
   it("setup-flow.md has system shape and execution model as separate gates", async () => {
