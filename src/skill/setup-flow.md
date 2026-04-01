@@ -358,67 +358,69 @@ Before asking for approval, briefly explain what they're looking at:
 
 "**How this works:** Phases are milestones in your project's development. They track progress from setup to shipping. Tickets are specific work items within each phase. After setup, typing `/story` at the start of any Claude Code session loads this context automatically. Claude will know your project's state, what was done last session, and what to work on next."
 
-Then use `AskUserQuestion` for approval:
-- question: "How does this proposal look?"
-- header: "Proposal"
+Then use ONE `AskUserQuestion` that combines approval and refinement depth (do not ask two separate questions):
+- question: "How should I proceed with this proposal?"
+- header: "Proceed"
 - options:
-  - "Looks good" -- approve and continue
-  - "Adjust phases" -- iterate on phase structure
-  - "Adjust tickets" -- iterate on ticket details
-  - "Start over" -- re-analyze from scratch
+  - "Refine + get a second opinion (Recommended)" -- I'll add descriptions, dependencies, and sizing, then have an independent reviewer check my work before creating anything
+  - "Refine tickets" -- I'll add descriptions, figure out dependencies, and flag oversized tickets
+  - "Create as-is" -- create tickets now as shown
+  - "Adjust first" -- I want to change phases or tickets before proceeding
+- (Other always available for free-text feedback)
 
-Re-show this `AskUserQuestion` after adjustments. Loop until "Looks good."
+If "Adjust first": ask what they want to change, iterate, then re-show this same AskUserQuestion. Loop until they pick a create/refine option.
 
-#### 1d2. Refinement and Review
+If "Create as-is" and no brief exists: warn "Note: tickets will have titles only -- you can add descriptions later." Then proceed to **1e. Execute on Approval**.
 
-After the user approves the proposal structure, use `AskUserQuestion` for refinement depth:
-- question: "Want me to refine these before creating?"
-- header: "Depth"
+#### 1d2. Refinement and Review (internal -- user does not see intermediate steps)
+
+**This section runs silently.** The user already chose their depth. Do the work, then present the final result ONCE.
+
+If a brief/PRD was found in step 1b, use those structured notes. If no brief exists (e.g., the user came through step 1c interview), infer descriptions from the interview answers and propose standard dependencies based on the tech stack.
+
+**What refinement does (internally):**
+- Extract specs from the brief into ticket descriptions (3-4 sentences each, actionable)
+- Infer `blockedBy` from phase ordering and domain logic (schema before CRUD, auth before protected routes, CRUD before business logic, API before UI)
+- Flag and split oversized tickets (3+ entities, API+UI in one ticket, 3+ models)
+- Cross-reference brief entities against tickets, add missing ones
+- Detect core differentiator -- decompose if single ticket
+- Surface undecided tech choices
+
+**If "Refine + review":** After refinement, also run an independent review:
+- If `review_plan` MCP tool is available, use it. Otherwise spawn an independent Claude agent. If neither available, skip with a note.
+- Maximum 2 review rounds.
+- Incorporate all findings into the proposal. The user sees the final result, not the review process.
+
+**Present the final result ONCE.** Do NOT show every ticket with its description. Show a compact summary of what changed:
+
+```
+Refinement complete. Here's what changed:
+
+- Added descriptions to 14 tickets
+- Added 8 dependency links (blockedBy chains)
+- No tickets flagged for splitting (all well-scoped)
+- [If review ran] Independent review: approved with 2 suggestions incorporated
+  - [brief summary of each suggestion]
+
+Updated proposal:
+
+[Show the same phase + ticket table as before, but now with a "Deps" column]
+
+| Ticket | Title                    | Phase      | Deps      |
+|--------|--------------------------|------------|-----------|
+| T-001  | Project setup            | foundation | --        |
+| T-002  | Database schema design   | foundation | T-001     |
+| T-006  | Auth setup               | foundation | T-001     |
+| ...    | ...                      | ...        | ...       |
+```
+
+Then use `AskUserQuestion`:
+- question: "Ready to create?"
+- header: "Create"
 - options:
-  - "Yes, refine + get a second opinion (Recommended)" -- I'll refine, then have an independent reviewer check my work
-  - "Yes, refine them" -- I'll add descriptions, figure out dependencies, and flag oversized tickets
-  - "Create as-is" -- create tickets now with just titles
-
-If "Create as-is" and no brief exists: warn "Note: tickets will have titles only -- you can add descriptions later."
-
-**If "Refine tickets" or "Refine + review":**
-
-Refine the proposal. If a brief/PRD was found in step 1b, use those structured notes. If no brief exists (e.g., the user came through step 1c interview), infer descriptions from the interview answers and propose standard dependencies based on the tech stack.
-
-**Descriptions:** Extract specs from the brief into ticket descriptions -- entity fields, acceptance criteria, API contracts, business rules. If no brief, write descriptions based on the user's interview answers and common patterns for the chosen stack. Cap each description at 3-4 sentences. Keep them actionable, not exhaustive. The goal is "enough to implement without re-reading the brief."
-
-**Dependencies:** Infer `blockedBy` relationships from phase ordering and domain logic:
-- Schema/migration tickets block CRUD API tickets
-- Auth tickets block protected route tickets
-- CRUD/model tickets block business logic that depends on them
-- API tickets block UI tickets that consume them
-
-**Sizing check:** Flag tickets that cover more than one major concern:
-- Mentions 3+ distinct entities in one ticket
-- Covers both API implementation and UI in one ticket
-- Handles 3+ distinct models, modes, or billing types in one ticket
-- Offer to split flagged tickets into sub-tasks
-
-**Missing entity detection:** Cross-reference entities and concepts mentioned in the brief against the proposed ticket list. Flag entities that appear in the brief but have no corresponding ticket. Common misses: user profile/settings, notification system, seed data, admin/config screens.
-
-**Core differentiator detection:** Identify the ticket(s) covering what the brief emphasizes most (the main value proposition). If the core differentiator is a single ticket, flag it for decomposition -- it likely needs 3-4 sub-tickets.
-
-**Undecided tech choices:** Surface technology decisions mentioned in the brief as "X or Y" that haven't been resolved. Present them as explicit decisions to make before implementation starts (e.g., "ORM: Drizzle or Prisma -- decide before T-002").
-
-After refinement, present the updated proposal showing what changed: added descriptions, new blockedBy links, split tickets, newly created tickets for missing entities, and flagged decisions. Wait for the user to approve the refined proposal before continuing.
-
-**If "Refine + review":**
-
-After refinement, run an independent review of the full proposal (phases, tickets, descriptions, dependencies):
-
-**Backend selection:** Use the same review backend selection as autonomous mode -- if the `review_plan` MCP tool is available, use it (pass the full proposal as the plan document); otherwise spawn an independent Claude agent with the brief + proposal and ask it to audit for gaps, sizing issues, missing dependencies, and architectural concerns. If neither is available, skip review with a note.
-
-**Review cap:** Maximum 2 review rounds for setup proposals.
-
-**After review findings come back:**
-- Present ALL findings to the user as a summary diff: added tickets, changed descriptions, new dependencies, files to be generated.
-- User approves the final version before any execution. Do not auto-incorporate findings.
-- If the user requests changes based on findings, update the proposal and optionally re-review.
+  - "Create everything (Recommended)"
+  - "Let me adjust first" -- iterate, then re-ask
+  - "Show me the full details" -- expand all ticket descriptions (for users who want to inspect)
 
 #### 1e. Execute on Approval
 

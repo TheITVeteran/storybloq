@@ -156,10 +156,10 @@ describe("setup-skill", () => {
   it("setup-flow.md 1d2 refinement covers descriptions, dependencies, sizing, and missing entities", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
     expect(content).toContain("blockedBy");
-    expect(content).toContain("Sizing check");
-    expect(content).toContain("Missing entity detection");
-    expect(content).toContain("Core differentiator detection");
-    expect(content).toContain("Undecided tech choices");
+    expect(content).toContain("split oversized tickets");
+    expect(content).toContain("missing");
+    expect(content).toContain("core differentiator");
+    expect(content).toContain("undecided tech choices");
   });
 
   it("setup-flow.md review uses autonomous mode backend selection", async () => {
@@ -177,13 +177,16 @@ describe("setup-skill", () => {
     expect(content).toContain("Sanitization");
   });
 
-  it("setup-flow.md refinement and review are a single escalating choice", async () => {
+  it("setup-flow.md has single combined approval + refinement question", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
-    // One entry point, not two separate prompts
-    expect(content).toContain("Want me to refine these before creating");
-    expect(content).toContain("Yes, refine + get a second opinion (Recommended)");
-    expect(content).toContain("Yes, refine them");
+    // One question combines approval and refinement depth
+    expect(content).toContain("How should I proceed with this proposal");
+    expect(content).toContain("Refine + get a second opinion (Recommended)");
     expect(content).toContain("Create as-is");
+    expect(content).toContain("Adjust first");
+    // Refinement runs silently, presents result once
+    expect(content).toContain("user does not see intermediate steps");
+    expect(content).toContain("Do NOT show every ticket with its description");
   });
 
   it("setup-flow.md has system shape and execution model as separate gates", async () => {
