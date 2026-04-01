@@ -216,6 +216,22 @@ describe("setup-skill", () => {
     expect(content).toContain("Structured generation");
   });
 
+  it("setup-flow.md has quality checks gate with three tiers", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("quality checks");
+    expect(content).toContain("Full pipeline (Recommended)");
+    expect(content).toContain("Tests only");
+    expect(content).toContain("Minimal");
+  });
+
+  it("setup-flow.md 1e configures recipe stages via CLI after init", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("config set-overrides");
+    expect(content).toContain("WRITE_TESTS");
+    expect(content).toContain("VERIFY");
+    expect(content).toContain("BUILD");
+  });
+
   it("setup-flow.md AI safety is two questions: audience then sensitive domain", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
     expect(content).toContain("Who interacts with the AI output");

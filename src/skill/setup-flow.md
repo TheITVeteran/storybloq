@@ -327,6 +327,26 @@ AI gates generate tickets the current flow would miss:
 - Document ownership model (if RAG + auth)
 - Audit logging + disclaimers (if sensitive domain)
 
+**--- Quality checks (skip for static sites, content-only, simple portfolios) ---**
+
+**Step 4g:** Quality checks for autonomous mode. Use `AskUserQuestion`:
+- question: "How should I handle quality checks when working on your tickets?"
+- header: "Quality"
+- options:
+  - "Full pipeline (Recommended)" -- I'll write tests first (TDD), run them after building, smoke test your endpoints, and validate the build
+  - "Tests only" -- I'll run tests after building, skip endpoint and build checks
+  - "Minimal" -- just build and commit, no automated checks
+- (Other always available for custom configuration)
+
+If domain complexity includes workflows/approvals or sensitive domain was selected, bias toward "Full pipeline" and explain why: "Recommended because your project has [business rules / sensitive domain] -- TDD catches bugs before they ship."
+
+Quality level maps to autonomous recipe stages (configured in step 1e):
+- **Full pipeline:** WRITE_TESTS + TEST + VERIFY + BUILD (all enabled)
+- **Tests only:** TEST (enabled), others disabled
+- **Minimal:** all stages disabled
+
+Stage-specific details (test command, dev server URL, build command) are inferred from the stack silently -- never shown to the user.
+
 **--- Milestones ---**
 
 **Step 5:** "What are the major milestones?" (free text)
@@ -345,6 +365,7 @@ Show the user a structured proposal (table format, not raw JSON):
 - **Domain complexity** (workflows, org scoping, or simple CRUD)
 - **Auth / identity model**
 - **AI pattern + provider + processing** (if AI project)
+- **Quality checks** (Full pipeline / Tests only / Minimal)
 - **Any inferred concerns** (realtime, billing, etc. per design rule 4)
 - **Editable assumptions** (if three-strike acceleration was used, clearly marked)
 - **Unresolved decisions**
@@ -432,6 +453,52 @@ Only proceed to **1e. Execute on Approval** after the user selects "Create every
 **Two-pass ticket creation:**
 
 1. Call `claudestory_init` with name, type, language -- after this, all MCP tools become available dynamically
+
+1b. **Configure autonomous recipe stages** based on the quality check answer from Step 4g. Construct a JSON object and apply via Bash:
+    ```
+    claudestory config set-overrides --json '<JSON>'
+    ```
+
+    **Quality level -> stage mapping:**
+
+    Full pipeline:
+    ```json
+    { "stages": {
+      "WRITE_TESTS": { "enabled": true, "onExhaustion": "plan" },
+      "TEST": { "enabled": true, "command": "<detected>" },
+      "VERIFY": { "enabled": true, "startCommand": "<detected>", "readinessUrl": "<detected>" },
+      "BUILD": { "enabled": true, "command": "<detected>" }
+    }}
+    ```
+
+    Tests only:
+    ```json
+    { "stages": {
+      "TEST": { "enabled": true, "command": "<detected>" }
+    }}
+    ```
+
+    Minimal: no overrides needed (default recipe handles it).
+
+    **Stack -> command detection (fill in `<detected>` values):**
+
+    | Stack | Test command | Dev server | Readiness URL | Build command |
+    |-------|-------------|------------|---------------|---------------|
+    | Next.js | `npm test` | `npm run dev` | `http://localhost:3000` | `npm run build` |
+    | Nuxt | `npm test` | `npm run dev` | `http://localhost:3000` | `npm run build` |
+    | SvelteKit | `npm test` | `npm run dev` | `http://localhost:5173` | `npm run build` |
+    | Vite (React/Vue) | `npm test` | `npm run dev` | `http://localhost:5173` | `npm run build` |
+    | FastAPI | `pytest` | `uvicorn main:app --reload` | `http://localhost:8000` | -- |
+    | Django | `python manage.py test` | `python manage.py runserver` | `http://localhost:8000` | -- |
+    | Express/Fastify | `npm test` | `npm run dev` | `http://localhost:3000` | `npm run build` |
+    | Go | `go test ./...` | `go run .` | `http://localhost:8080` | -- |
+    | Rust | `cargo test` | -- | -- | `cargo build` |
+    | Flutter | `flutter test` | -- | -- | `flutter build` |
+    | Default | `npm test` | `npm run dev` | `http://localhost:3000` | `npm run build` |
+
+    Skip VERIFY when: static site, CLI, library, package, mobile-only, BaaS (no custom server).
+    Skip BUILD when: Python, Go (compiled at test time).
+
 2. Call `claudestory_phase_create` for each phase -- first phase with `atStart: true`, subsequent with `after: <previous-phase-id>`
 3. **Pass 1:** Call `claudestory_ticket_create` for each ticket WITHOUT `blockedBy` (ticket IDs don't exist until after creation)
 4. Call `claudestory_issue_create` for each imported GitHub issue
@@ -493,7 +560,7 @@ Same sanitization and preview rules as CLAUDE.md. Only write after explicit appr
 After creation completes:
 - Confirm what was created (e.g., "Created 5 phases, 18 tickets, 3 issues, CLAUDE.md, and RULES.md")
 - Check if `.gitignore` includes `.story/snapshots/` (warn if missing -- snapshots should not be committed)
-- Write an initial handover documenting the setup decisions. Explicitly capture which gates were answered and what was chosen: surface, characteristics, stack, system shape, execution model, deployment, data model, domain complexity, auth model, sensitive domain, AI pattern/provider/processing (if applicable), design source. This handover is the source of truth for decisions; CLAUDE.md is the project description.
+- Write an initial handover documenting the setup decisions. Explicitly capture which gates were answered and what was chosen: surface, characteristics, stack, system shape, execution model, deployment, data model, domain complexity, auth model, sensitive domain, quality checks level, AI pattern/provider/processing (if applicable), design source. This handover is the source of truth for decisions; CLAUDE.md is the project description.
 
 Present a brief completion message and tell the user how to start:
 
