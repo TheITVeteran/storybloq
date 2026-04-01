@@ -81,19 +81,49 @@ After `claudestory_status` returns, check in order:
 
 ## Step 3: Present Summary
 
-After loading context, present a summary that feels like a collaborator catching you up -- conversational, not a status report.
+After loading context, present a summary with two parts: a conversational intro (2-3 sentences catching the user up), then structured tables showing actionable data.
 
-Include:
-- Project progress (X/Y tickets complete, current phase)
-- What changed since last snapshot (from recap)
-- What the last session accomplished (from handover -- keep it to 1-2 sentences)
-- The recommended next ticket and why it's next (unblocked, high priority, continues recent work)
-- Any high-severity issues or blockers worth knowing about
-- Key process rules (from lessons digest -- only if there are lessons)
+**Part 1: Conversational intro (2-3 sentences)**
 
-Use `claudestory_recommend` for context-aware suggestions mixing tickets and issues.
+Open with the project name and progress. Mention what the last session accomplished in one sentence. Note anything important (no git repo, open issues, blockers). Keep it brief -- the tables carry the detail.
 
-**First session guide (show only when handover count is 0 or 1):** If this is the user's first or second real session (setup handover is the only one), include a brief mode guide after the summary:
+**Part 2: Structured tables**
+
+**Ready to Work** -- call `claudestory_recommend` for context-aware suggestions, then show a table of unblocked tickets ready to be picked up:
+
+```
+## Ready to Work
+| Ticket | Title                              | Phase      |
+|--------|-----------------------------------|------------|
+| T-001  | Project setup                     | foundation |
+| T-011  | Rate agreement conditions schema  | foundation |
+| T-012  | Audit trail infrastructure        | foundation |
+```
+
+Show up to 5 unblocked tickets. If more exist, note "(+N more unblocked)".
+
+**Decisions Pending** (only if there are TBD items in CLAUDE.md or undecided tech choices from the brief):
+
+```
+## Decisions Pending
+- PDF generation: managed service vs pure-JS (affects T-030)
+- Background jobs: Inngest vs Trigger.dev vs Vercel Cron (affects T-001)
+```
+
+**Open Issues** (only if issues exist with status "open"):
+
+```
+## Open Issues
+| Issue    | Title                  | Severity |
+|----------|------------------------|----------|
+| ISS-001  | Auth token expiry bug  | high     |
+```
+
+**Key Rules** (from lessons digest -- only if lessons exist, keep to 2-3 most important):
+
+Show as a brief callout, not a full list. Example: "Rules: integer cents for money, billing engine is pure logic, TDD for billing."
+
+**First session guide (show only when handover count is 0 or 1):**
 
 ```
 Tip: You can also use these modes anytime:
@@ -102,18 +132,20 @@ Tip: You can also use these modes anytime:
   /story review T-XXX   Review code you already wrote
 ```
 
-Show this once or twice, then never again. Returning users don't need it.
+Show this once or twice, then never again.
+
+**Part 3: AskUserQuestion**
 
 End with `AskUserQuestion`:
 - question: "What would you like to do?"
 - header: "Next"
 - options:
-  - "Work on [recommended ticket title]" -- the ticket you just recommended
+  - "Work on [first recommended ticket ID + title] (Recommended)" -- the top ticket from the Ready table
   - "Something else" -- I'll ask what you have in mind
   - "Autonomous mode" -- I'll work through tickets on my own
 - (Other always available for free-text input)
 
-This replaces the open-ended "What would you like to work on?" with a one-tap default. Most users want the recommended ticket -- make that effortless.
+Most users want the recommended ticket -- make that one tap.
 
 ## Session Lifecycle
 
