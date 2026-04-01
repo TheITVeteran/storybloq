@@ -267,7 +267,7 @@ export interface SetupSkillOptions {
 /**
  * Installs the /story skill globally for Claude Code.
  *
- * 1. Writes SKILL.md and reference.md to ~/.claude/skills/story/
+ * 1. Writes SKILL.md + support files (setup-flow.md, autonomous-mode.md, reference.md) to ~/.claude/skills/story/
  * 2. Attempts to register MCP server via `claude mcp add`
  * 3. Optionally registers PreCompact hook in ~/.claude/settings.json
  * 4. Prints success message
@@ -302,19 +302,25 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
   const skillContent = await readFile(join(srcSkillDir, "SKILL.md"), "utf-8");
   await writeFile(join(skillDir, "SKILL.md"), skillContent, "utf-8");
 
-  let referenceWritten = false;
-  const refSrcPath = join(srcSkillDir, "reference.md");
-  if (existsSync(refSrcPath)) {
-    const refContent = await readFile(refSrcPath, "utf-8");
-    await writeFile(join(skillDir, "reference.md"), refContent, "utf-8");
-    referenceWritten = true;
+  const supportFiles = ["setup-flow.md", "autonomous-mode.md", "reference.md"];
+  const writtenFiles = ["SKILL.md"];
+  const missingFiles: string[] = [];
+  for (const filename of supportFiles) {
+    const srcPath = join(srcSkillDir, filename);
+    if (existsSync(srcPath)) {
+      const content = await readFile(srcPath, "utf-8");
+      await writeFile(join(skillDir, filename), content, "utf-8");
+      writtenFiles.push(filename);
+    } else {
+      missingFiles.push(filename);
+    }
   }
 
   log(`${existed ? "Updated" : "Installed"} /story skill at ${skillDir}/`);
-  if (referenceWritten) {
-    log("  SKILL.md + reference.md written");
-  } else {
-    log("  SKILL.md written (reference.md not found — generate with `claudestory reference --format md`)");
+  log(`  ${writtenFiles.join(" + ")} written`);
+  if (missingFiles.length > 0) {
+    process.stderr.write(`Warning: support file(s) not found in source: ${missingFiles.join(", ")}\n`);
+    process.stderr.write("  This may indicate a corrupt installation. Try: npm install -g @anthropologies/claudestory\n");
   }
 
   // Attempt MCP registration — requires both `claudestory` and `claude` in PATH.

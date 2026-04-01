@@ -40,6 +40,133 @@ describe("setup-skill", () => {
     expect(existsSync(join(dir, "SKILL.md"))).toBe(true);
     expect(existsSync(join(dir, "reference.md"))).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // Support file existence
+  // -------------------------------------------------------------------------
+
+  it("bundled setup-flow.md exists in src/skill/", () => {
+    expect(existsSync(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"))).toBe(true);
+  });
+
+  it("bundled autonomous-mode.md exists in src/skill/", () => {
+    expect(existsSync(join(PROJECT_ROOT, "src", "skill", "autonomous-mode.md"))).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // Cross-file reference integrity
+  // -------------------------------------------------------------------------
+
+  it("every skill support file reference in SKILL.md points to an existing file", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "SKILL.md"), "utf-8");
+    // Match "read `filename.md` in the same directory as this skill file" pattern
+    const references = content.match(/read `([^`]+\.md)` in the same directory/gi) ?? [];
+    expect(references.length).toBeGreaterThan(0);
+
+    for (const ref of references) {
+      const match = ref.match(/`([^`]+\.md)`/);
+      if (!match) continue;
+      const filename = match[1]!;
+      expect(
+        existsSync(join(PROJECT_ROOT, "src", "skill", filename)),
+        `SKILL.md references "${filename}" as a support file but it does not exist in src/skill/`,
+      ).toBe(true);
+    }
+  });
+
+  it("no orphaned .md files in src/skill/ (every file is SKILL.md or referenced from it)", async () => {
+    const { readdirSync } = await import("node:fs");
+    const skillDir = join(PROJECT_ROOT, "src", "skill");
+    const allFiles = readdirSync(skillDir).filter(f => f.endsWith(".md"));
+    const content = await readFile(join(skillDir, "SKILL.md"), "utf-8");
+
+    for (const file of allFiles) {
+      if (file === "SKILL.md") continue;
+      expect(
+        content.includes(file),
+        `"${file}" exists in src/skill/ but is not referenced from SKILL.md`,
+      ).toBe(true);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // SKILL.md <-> output-formatter.ts sentinel coupling
+  // -------------------------------------------------------------------------
+
+  it("SKILL.md Step 2b matches the EMPTY_SCAFFOLD_HEADING sentinel", async () => {
+    const skillContent = await readFile(join(PROJECT_ROOT, "src", "skill", "SKILL.md"), "utf-8");
+    const formatterContent = await readFile(
+      join(PROJECT_ROOT, "src", "core", "output-formatter.ts"),
+      "utf-8",
+    );
+
+    // Extract the sentinel value from output-formatter.ts
+    const sentinelMatch = formatterContent.match(
+      /export const EMPTY_SCAFFOLD_HEADING\s*=\s*"([^"]+)"/,
+    );
+    expect(sentinelMatch, "EMPTY_SCAFFOLD_HEADING not found in output-formatter.ts").toBeTruthy();
+    const sentinel = sentinelMatch![1]!;
+
+    // SKILL.md Step 2b must reference this exact string
+    expect(
+      skillContent.includes(sentinel),
+      `SKILL.md does not contain the sentinel string "${sentinel}" -- Step 2b coupling is broken`,
+    ).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // Support file content validation
+  // -------------------------------------------------------------------------
+
+  it("setup-flow.md contains the AI-Assisted Setup Flow", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("## AI-Assisted Setup Flow");
+    expect(content).toContain("#### 1a. Detect Project Type");
+    expect(content).toContain("#### 1b. Existing Project");
+    expect(content).toContain("#### 1c. New Project");
+    expect(content).toContain("#### 1d. Present Proposal");
+    expect(content).toContain("#### 1e. Execute on Approval");
+    expect(content).toContain("#### 1f. Post-Setup");
+  });
+
+  it("setup-flow.md has continue-to-Step-2 directive referencing SKILL.md", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Step 2: Load Context");
+    expect(content).toContain("SKILL.md");
+  });
+
+  it("autonomous-mode.md contains autonomous and tiered mode sections", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "autonomous-mode.md"), "utf-8");
+    expect(content).toContain("## Autonomous Mode");
+    expect(content).toContain("claudestory_autonomous_guide");
+    expect(content).toContain("### `/story review T-XXX`");
+    expect(content).toContain("### `/story plan T-XXX`");
+    expect(content).toContain("### `/story guided T-XXX`");
+  });
+
+  it("SKILL.md no longer contains extracted sections inline", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "SKILL.md"), "utf-8");
+    // Setup flow should not be inline
+    expect(content).not.toContain("#### 1a. Detect Project Type");
+    expect(content).not.toContain("#### 1b. Existing Project");
+    // Autonomous mode should not be inline
+    expect(content).not.toContain("claudestory_autonomous_guide");
+    expect(content).not.toContain("PICK_TICKET");
+  });
+
+  // -------------------------------------------------------------------------
+  // Installer copies all support files
+  // -------------------------------------------------------------------------
+
+  it("supportFiles array in setup-skill.ts includes all support files", async () => {
+    const tsContent = await readFile(
+      join(PROJECT_ROOT, "src", "cli", "commands", "setup-skill.ts"),
+      "utf-8",
+    );
+    expect(tsContent).toContain('"setup-flow.md"');
+    expect(tsContent).toContain('"autonomous-mode.md"');
+    expect(tsContent).toContain('"reference.md"');
+  });
 });
 
 // ---------------------------------------------------------------------------
