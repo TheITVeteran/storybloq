@@ -167,9 +167,7 @@ Show: "So far: [name] is a [surface] + [traits] built with [stack]."
   - "No, start from scratch" -- generate design foundation tickets (color palette, typography, layout, component selection)
   - "Not sure yet"
 
-If NOT "Yes, mockups / Figma" and project has a UI surface, follow up with component library choice:
-- `AskUserQuestion`: "Component library?"
-- options: shadcn/ui (Recommended for Next.js), Material UI, Chakra UI, None/custom
+Component library is inferred from the stack, not asked as a separate gate. Next.js defaults to shadcn/ui, Flutter to Material, React Native to NativeBase/Paper. Only ask if the stack doesn't have a clear default or the user picked "No, start from scratch" (where the component system is part of the design foundation tickets).
 
 **--- Cluster 3: System structure ---**
 
@@ -182,7 +180,7 @@ If NOT "Yes, mockups / Figma" and project has a UI surface, follow up with compo
   - "Frontend + managed backend (Supabase/Firebase)" -- BaaS handles DB, auth, storage. You build the frontend. Fastest path to MVP.
   - "Not sure -- recommend one"
 
-BaaS as a first-class path. If selected: skip ORM choice (BaaS handles it), skip auth gate (BaaS handles it), adjust deployment to match (Vercel + Supabase, or Firebase Hosting + Firebase). Generates different tickets: BaaS setup, client SDK integration, security rules, instead of custom API + auth tickets.
+BaaS as a first-class path. If selected: skip ORM choice (BaaS handles it), adjust deployment to match (Vercel + Supabase, or Firebase Hosting + Firebase). Auth gate still fires -- the user still decides what kind of auth (no auth, individual, team/org), but tickets generated are BaaS-specific (Supabase RLS policies, Firebase Security Rules) instead of custom middleware. Generates different tickets: BaaS setup, client SDK integration, security rules, instead of custom API + auth tickets.
 
 **BaaS + AI edge case:** If the user also selected "AI / LLM powered" as a characteristic, AI gates still fire normally. For document ownership tickets (RAG + auth), reference "Supabase RLS policies" or "Firebase Security Rules" instead of "custom row-level access." The AI cluster's data model tickets adapt to the BaaS context.
 
@@ -246,7 +244,7 @@ Multi-select because these are orthogonal: a system can have both workflows AND 
 
 When recommending auth setup for individual accounts, suggest Firebase Auth or Clerk as the easiest options. These handle email/password, social login, session management, and JWT with minimal code. Only recommend custom auth when the user has specific requirements.
 
-**Step 4f:** Sensitive domain (skip unless project description or characteristics suggest health, legal, finance, compliance, government, or regulated industry). This is the canonical sensitive domain gate for ALL projects. The AI safety cluster (Cluster 5) references this answer instead of re-asking. Use `AskUserQuestion`:
+**Step 4f:** Sensitive domain. This is the canonical sensitive domain gate for ALL projects. The AI safety cluster (Cluster 5) references this answer instead of re-asking. Bias toward asking -- skip only for projects that are clearly non-sensitive (portfolio, blog, dev tool, game). Ask for anything with user data, business transactions, or professional use cases. Use `AskUserQuestion`:
 - question: "Is this in a sensitive/regulated domain?"
 - header: "Domain"
 - options:
@@ -399,8 +397,9 @@ Refinement complete. Here's what changed:
 - Added descriptions to 14 tickets
 - Added 8 dependency links (blockedBy chains)
 - No tickets flagged for splitting (all well-scoped)
-- [If review ran] Independent review: approved with 2 suggestions incorporated
-  - [brief summary of each suggestion]
+- [If review ran] Independent review: 2 suggestions incorporated
+  - T-005 split into T-005a/T-005b (was too broad)
+  - T-012 added blockedBy T-006 (missing dependency)
 
 Updated proposal:
 

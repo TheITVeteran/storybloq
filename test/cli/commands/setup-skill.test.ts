@@ -198,9 +198,9 @@ describe("setup-skill", () => {
   it("setup-flow.md has BaaS as a first-class system shape option", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
     expect(content).toContain("managed backend (Supabase/Firebase)");
-    // BaaS skips ORM and auth
+    // BaaS skips ORM but auth still fires
     expect(content).toContain("skip ORM choice");
-    expect(content).toContain("skip auth gate");
+    expect(content).toContain("Auth gate still fires");
   });
 
   it("setup-flow.md domain complexity is multiSelect", async () => {
