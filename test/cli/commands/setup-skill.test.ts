@@ -118,19 +118,33 @@ describe("setup-skill", () => {
   // Support file content validation
   // -------------------------------------------------------------------------
 
-  it("setup-flow.md contains all setup flow sections including T-165 additions", async () => {
+  it("setup-flow.md contains all setup flow sections", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
-    // Original sections
     expect(content).toContain("## AI-Assisted Setup Flow");
     expect(content).toContain("#### 1a. Detect Project Type");
     expect(content).toContain("#### 1b. Existing Project");
     expect(content).toContain("#### 1c. New Project");
     expect(content).toContain("#### 1d. Present Proposal");
+    expect(content).toContain("#### 1d2. Refinement and Review");
     expect(content).toContain("#### 1e. Execute on Approval");
     expect(content).toContain("#### 1f. Post-Setup");
-    // T-165 additions
-    expect(content).toContain("#### 1d2. Refinement Pass");
-    expect(content).toContain("#### 1d3. Proposal Review");
+  });
+
+  it("setup-flow.md uses two-axis taxonomy (surface + characteristics)", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("primary surface");
+    expect(content).toContain("special characteristics");
+    expect(content).toContain("multiSelect: true");
+  });
+
+  it("setup-flow.md characteristics are never skipped even when stack is named", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Do NOT skip characteristics");
+  });
+
+  it("setup-flow.md has summary breaks between gate clusters", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("--- Summary break ---");
   });
 
   it("setup-flow.md 1b includes brief/PRD scan", async () => {
@@ -148,7 +162,7 @@ describe("setup-skill", () => {
     expect(content).toContain("Undecided tech choices");
   });
 
-  it("setup-flow.md 1d3 proposal review uses autonomous mode backend selection", async () => {
+  it("setup-flow.md review uses autonomous mode backend selection", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
     expect(content).toContain("review_plan");
     expect(content).toContain("Maximum 2 review rounds");
@@ -163,17 +177,117 @@ describe("setup-skill", () => {
     expect(content).toContain("Sanitization");
   });
 
-  it("setup-flow.md refinement and review steps are opt-in", async () => {
+  it("setup-flow.md refinement and review are a single escalating choice", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
-    // 1d2 refinement is opt-in
-    expect(content).toContain("#### 1d2. Refinement Pass (optional)");
-    // 1d3 review is opt-in
-    expect(content).toContain("#### 1d3. Proposal Review (optional)");
-    // Both have explicit decline paths
-    const refinementSection = content.split("#### 1d2")[1]!.split("#### 1d3")[0]!;
-    expect(refinementSection).toMatch(/declines.*skip/i);
-    const reviewSection = content.split("#### 1d3")[1]!.split("#### 1e")[0]!;
-    expect(reviewSection).toMatch(/declines.*skip/i);
+    // One entry point, not two separate prompts
+    expect(content).toContain("How much refinement before creating");
+    expect(content).toContain("Create as-is");
+    expect(content).toContain("Refine tickets");
+    expect(content).toContain("Refine + independent review");
+  });
+
+  it("setup-flow.md has system shape and execution model as separate gates", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("How should the system be structured");
+    expect(content).toContain("How does processing work");
+  });
+
+  it("setup-flow.md has BaaS as a first-class system shape option", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("managed backend (Supabase/Firebase)");
+    // BaaS skips ORM and auth
+    expect(content).toContain("skip ORM choice");
+    expect(content).toContain("skip auth gate");
+  });
+
+  it("setup-flow.md domain complexity is multiSelect", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    const domainSection = content.split("Step 4d")[1]!.split("Step 4e")[0]!;
+    expect(domainSection).toContain("multiSelect: true");
+  });
+
+  it("setup-flow.md AI pattern supports primary + secondary (composable)", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("primary AI pattern");
+    expect(content).toContain("secondary capabilities");
+    expect(content).toContain("Structured generation");
+  });
+
+  it("setup-flow.md AI safety is two questions: audience then sensitive domain", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Who interacts with the AI output");
+    expect(content).toContain("Is this a sensitive domain");
+  });
+
+  it("setup-flow.md auth gate is NOT skipped for no-database projects", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain('Do NOT skip for "no database"');
+  });
+
+  it("setup-flow.md auth suggests Firebase Auth and Clerk as easy options", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Firebase Auth");
+    expect(content).toContain("Clerk");
+  });
+
+  it("setup-flow.md sensitive domain gate exists outside AI branch", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    // Step 4f is in Cluster 4, not inside Cluster 5 (AI)
+    const cluster4 = content.split("--- Cluster 4")[1]!.split("--- Cluster 5")[0]!;
+    expect(cluster4).toContain("sensitive/regulated domain");
+  });
+
+  it("setup-flow.md has simple project fast path", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Simple project fast path");
+    expect(content).toContain("straightforward site");
+  });
+
+  it("setup-flow.md has design source gate for UI projects", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("Do you have designs");
+    expect(content).toContain("mockups / Figma");
+    expect(content).toContain("start from scratch");
+  });
+
+  it("setup-flow.md three-strike protects critical gates", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("3 out of any 4 gates");
+    expect(content).toContain("auth model, sensitive domain, and primary AI pattern are never silently collapsed");
+  });
+
+  it("setup-flow.md TDD recommendation is conditional", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    // TDD is tied to domain complexity, not universal
+    expect(content).toContain("TDD for business logic");
+    expect(content).toMatch(/tied.*gate answers/i);
+  });
+
+  it("setup-flow.md appendix has Default Stack Recommendations with disclaimer", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("## Appendix: Default Stack Recommendations");
+    expect(content).toContain("these are defaults, not absolutes");
+  });
+
+  it("setup-flow.md appendix covers AI, BaaS, and full-stack categories", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("### AI / LLM application");
+    expect(content).toContain("### BaaS / backendless");
+    expect(content).toContain("### Full-stack / multi-service");
+  });
+
+  it("setup-flow.md uses outcome-oriented gate language", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    // Outcome-oriented, not jargon
+    expect(content).toContain("How do users log in");
+    expect(content).toContain("What data does this system store");
+    expect(content).toContain("How should this go live");
+    expect(content).toContain("How should the system be structured");
+  });
+
+  it("setup-flow.md LLM recommendation says product default", async () => {
+    const content = await readFile(join(PROJECT_ROOT, "src", "skill", "setup-flow.md"), "utf-8");
+    expect(content).toContain("product default");
   });
 
   it("setup-flow.md has continue-to-Step-2 directive referencing SKILL.md", async () => {
