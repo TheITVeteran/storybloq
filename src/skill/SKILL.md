@@ -1,6 +1,6 @@
 ---
 name: story
-description: Cross-session context persistence for AI coding projects. Load project context, manage sessions, guide setup.
+description: Track tickets, issues, and progress for your project. Load project context, manage sessions, guide setup.
 ---
 
 # /story -- Project Context & Session Management

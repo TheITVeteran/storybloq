@@ -1,6 +1,6 @@
 # claudestory
 
-Cross-session context persistence for AI coding assistants. Tracks tickets, issues, roadmap phases, blockers, and session handovers in a `.story/` directory that AI tools read and write natively.
+An agentic development framework. Track tickets, issues, and progress for your project in a `.story/` directory that AI tools read and write natively.
 
 ## Installation
 
