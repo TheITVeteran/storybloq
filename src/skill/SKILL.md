@@ -23,6 +23,7 @@ claudestory tracks tickets, issues, roadmap, and handovers in a `.story/` direct
 - `/story settings` -> manage project settings (see Settings section below)
 - `/story design` -> evaluate frontend design (read `design/design.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`)
 - `/story design <platform>` -> evaluate for specific platform: web, ios, macos, android (read `design/design.md` in the same directory as this skill file)
+- `/story review-lenses` -> run multi-lens review on current diff (read `review-lenses/review-lenses.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`). Note: the autonomous guide invokes lenses automatically when `reviewBackends` includes `"lenses"` -- this command is for manual/debug use.
 - `/story help` -> show all capabilities (read `reference.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`)
 
 If the user's intent doesn't match any of these, use the full context load.
@@ -354,7 +355,24 @@ Do NOT search source code for this. The full config.json schema is shown below. 
       },
       "LESSON_CAPTURE": { "enabled": "boolean" },
       "ISSUE_SWEEP": { "enabled": "boolean" }
-    }
+    },
+    "lensConfig": {
+      "lenses": "\"auto\" | string[] (default: \"auto\")",
+      "maxLenses": "number (1-8, default: 8)",
+      "lensTimeout": "number | { default: number, opus: number } (default: { default: 60, opus: 120 })",
+      "findingBudget": "number (default: 10)",
+      "confidenceFloor": "number 0-1 (default: 0.6)",
+      "tokenBudgetPerLens": "number (default: 32000)",
+      "hotPaths": "string[] (glob patterns for Performance lens, default: [])",
+      "lensModels": "Record<string, string> (default: { default: sonnet, security: opus, concurrency: opus })"
+    },
+    "blockingPolicy": {
+      "neverBlock": "string[] (lens names that never produce blocking findings, default: [])",
+      "alwaysBlock": "string[] (categories that always block, default: [injection, auth-bypass, hardcoded-secrets])",
+      "planReviewBlockingLenses": "string[] (default: [security, error-handling])"
+    },
+    "requireSecretsGate": "boolean (default: false, require detect-secrets for lens reviews)",
+    "requireAccessibility": "boolean (default: false, make accessibility findings blocking)"
   }
 }
 ```
@@ -367,3 +385,4 @@ Additional skill documentation, loaded on demand:
 - **`autonomous-mode.md`** -- Autonomous mode, review, plan, and guided execution tiers
 - **`reference.md`** -- Full CLI command and MCP tool reference
 - **`design/design.md`** -- Frontend design evaluation and implementation guidance, with platform references in `design/references/`
+- **`review-lenses/review-lenses.md`** -- Multi-lens review orchestrator (8 specialized parallel reviewers), with lens prompts in `review-lenses/references/`

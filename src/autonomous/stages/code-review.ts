@@ -1,6 +1,8 @@
 import type { WorkflowStage, StageResult, StageAdvance, StageContext } from "./types.js";
+import { buildLensHistoryUpdate } from "./types.js";
 import type { GuideReportInput } from "../session-types.js";
 import { requiredRounds, nextReviewer } from "../review-depth.js";
+import { clearCache } from "../review-lenses/cache.js";
 
 /**
  * CODE_REVIEW stage — independent reviewer evaluates the implementation.
@@ -30,6 +32,34 @@ export class CodeReviewStage implements WorkflowStage {
     const diffReminder = mergeBase
       ? `Run: git diff ${mergeBase} — pass FULL output to reviewer.`
       : "Run: git diff HEAD + git ls-files --others --exclude-standard — pass FULL output to reviewer.";
+
+    // Lenses backend: multi-lens parallel review
+    if (reviewer === "lenses") {
+      return {
+        instruction: [
+          `# Multi-Lens Code Review — Round ${roundNum} of ${rounds} minimum`,
+          "",
+          `Capture the diff with: ${diffCommand}`,
+          "",
+          "This round uses the **multi-lens review orchestrator**. It fans out to specialized review agents (Clean Code, Security, Error Handling, and more) in parallel, then synthesizes findings into a single verdict.",
+          "",
+          "1. Capture the full diff",
+          "2. Call `prepareLensReview()` with the diff and changed file list",
+          "3. Spawn all lens subagents in parallel (each prompt is provided by the orchestrator)",
+          "4. Collect results and pass through the merger and judge pipeline",
+          "5. Report the final SynthesisResult verdict and findings",
+          "",
+          "When done, report verdict and findings.",
+        ].join("\n"),
+        reminders: [
+          diffReminder,
+          "Do NOT compress or summarize the diff.",
+          "Lens subagents run in parallel with read-only tools (Read, Grep, Glob).",
+          "If the reviewer flags pre-existing issues unrelated to your changes, file them as issues using claudestory_issue_create with severity and impact. Do not fix them in this ticket.",
+        ],
+        transitionedFrom: ctx.state.previousState ?? undefined,
+      };
+    }
 
     return {
       instruction: [
@@ -106,10 +136,14 @@ export class CodeReviewStage implements WorkflowStage {
       nextAction = "CODE_REVIEW";
     }
 
-    // CODE_REVIEW → PLAN: full reset — both plan and code reviews cleared
+    // CODE_REVIEW → PLAN: full reset — both plan and code reviews cleared + lens cache + lens history
+    // lensReviewHistory intentionally cleared: plan redirect means the approach changed fundamentally,
+    // so previous findings are no longer relevant for the lessons feedback loop threshold calculation.
     if (nextAction === "PLAN") {
+      clearCache(ctx.dir);
       ctx.writeState({
         reviews: { plan: [], code: [] },
+        lensReviewHistory: [],
         ticket: ctx.state.ticket ? { ...ctx.state.ticket, realizedRisk: undefined } : ctx.state.ticket,
       });
 
@@ -125,10 +159,20 @@ export class CodeReviewStage implements WorkflowStage {
       return { action: "back", target: "PLAN", reason: "plan_redirect" };
     }
 
-    // Normal transitions
-    ctx.writeState({
+    // Normal transitions + T-181 lens history (single atomic write)
+    const stateUpdate: Record<string, unknown> = {
       reviews: { ...ctx.state.reviews, code: codeReviews },
-    });
+    };
+    if (reviewerBackend === "lenses" && findings.length > 0) {
+      const updated = buildLensHistoryUpdate(
+        findings,
+        ctx.state.lensReviewHistory ?? [],
+        ctx.state.ticket?.id ?? "unknown",
+        "CODE_REVIEW",
+      );
+      if (updated) stateUpdate.lensReviewHistory = updated;
+    }
+    ctx.writeState(stateUpdate);
 
     ctx.appendEvent("code_review", {
       round: roundNum,

@@ -391,7 +391,48 @@ export const SessionStateSchema = z.object({
     handoverInterval: z.number().min(0).default(3),
     compactThreshold: z.string().default("high"),
     reviewBackends: z.array(z.string()).default(["codex", "agent"]),
+    // T-181: Multi-lens review config
+    lensConfig: z.object({
+      lenses: z.union([z.literal("auto"), z.array(z.string())]).default("auto"),
+      maxLenses: z.number().min(1).max(8).default(8),
+      lensTimeout: z.union([
+        z.number(),
+        z.object({ default: z.number(), opus: z.number() }),
+      ]).default({ default: 60, opus: 120 }),
+      findingBudget: z.number().min(1).default(10),
+      confidenceFloor: z.number().min(0).max(1).default(0.6),
+      tokenBudgetPerLens: z.number().min(1000).default(32000),
+      hotPaths: z.array(z.string()).default([]),
+      lensModels: z.record(z.string()).default({ default: "sonnet", security: "opus", concurrency: "opus" }),
+    }).optional(),
+    blockingPolicy: z.object({
+      neverBlock: z.array(z.string()).default([]),
+      alwaysBlock: z.array(z.string()).default(["injection", "auth-bypass", "hardcoded-secrets"]),
+      planReviewBlockingLenses: z.array(z.string()).default(["security", "error-handling"]),
+    }).optional(),
+    requireSecretsGate: z.boolean().default(false),
+    requireAccessibility: z.boolean().default(false),
+    testMapping: z.object({
+      strategy: z.literal("convention"),
+      patterns: z.array(z.object({
+        source: z.string(),
+        test: z.string(),
+      })),
+    }).optional(),
   }).default({ maxTicketsPerSession: 5, compactThreshold: "high", reviewBackends: ["codex", "agent"], handoverInterval: 3 }),
+
+  // T-181: Lens review findings history (for lessons feedback loop)
+  lensReviewHistory: z.array(z.object({
+    ticketId: z.string(),
+    stage: z.enum(["CODE_REVIEW", "PLAN_REVIEW"]),
+    lens: z.string(),
+    category: z.string(),
+    severity: z.string(),
+    disposition: z.enum(["open", "addressed", "contested", "deferred"]),
+    description: z.string(),
+    dismissReason: z.string().optional(),
+    timestamp: z.string(),
+  })).default([]),
 
   // T-123: Issue sweep tracking
   issueSweepState: z.object({
@@ -424,6 +465,7 @@ export const SessionStateSchema = z.object({
     maxTicketsPerSession: z.number(),
     compactThreshold: z.string(),
     reviewBackends: z.array(z.string()),
+    handoverInterval: z.number().optional(),
   }).optional(),
 }).passthrough();
 

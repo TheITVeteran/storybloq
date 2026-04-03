@@ -1,4 +1,5 @@
 import type { WorkflowStage, StageResult, StageAdvance, StageContext } from "./types.js";
+import { buildLensHistoryUpdate } from "./types.js";
 import type { GuideReportInput } from "../session-types.js";
 import { requiredRounds, nextReviewer } from "../review-depth.js";
 
@@ -19,6 +20,33 @@ export class PlanReviewStage implements WorkflowStage {
     const reviewer = nextReviewer(existingReviews, backends);
     const risk = ctx.state.ticket?.risk ?? "low";
     const minRounds = requiredRounds(risk as "low" | "medium" | "high");
+
+    // Lenses backend: multi-lens parallel plan review
+    if (reviewer === "lenses") {
+      return {
+        instruction: [
+          `# Multi-Lens Plan Review — Round ${roundNum} of ${Math.max(minRounds, roundNum)} minimum`,
+          "",
+          "This round uses the **multi-lens review orchestrator** for plan review. It fans out to specialized review agents (Clean Code, Security, Error Handling, and more) in parallel to evaluate the plan from multiple perspectives.",
+          "",
+          "1. Read the plan file",
+          "2. Call `prepareLensReview()` with the plan text (stage: PLAN_REVIEW)",
+          "3. Spawn all lens subagents in parallel",
+          "4. Collect results and pass through the merger and judge pipeline",
+          "5. Report the final SynthesisResult verdict and findings",
+          "",
+          "When done, call `claudestory_autonomous_guide` with:",
+          '```json',
+          `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "plan_review_round", "verdict": "<approve|revise|reject>", "findings": [...] } }`,
+          '```',
+        ].join("\n"),
+        reminders: [
+          "Report the exact verdict and findings from the synthesizer.",
+          "Lens subagents run in parallel with read-only tools (Read, Grep, Glob).",
+        ],
+        transitionedFrom: ctx.state.previousState ?? undefined,
+      };
+    }
 
     return {
       instruction: [
@@ -100,9 +128,20 @@ export class PlanReviewStage implements WorkflowStage {
       ? { ...ctx.state.reviews, plan: [] as typeof planReviews }
       : { ...ctx.state.reviews, plan: planReviews };
 
-    ctx.writeState({
+    // T-181: lens history merged into single atomic write
+    const stateUpdate: Record<string, unknown> = {
       reviews: reviewsForWrite,
-    });
+    };
+    if (reviewerBackend === "lenses" && findings.length > 0) {
+      const updated = buildLensHistoryUpdate(
+        findings,
+        ctx.state.lensReviewHistory ?? [],
+        ctx.state.ticket?.id ?? "unknown",
+        "PLAN_REVIEW",
+      );
+      if (updated) stateUpdate.lensReviewHistory = updated;
+    }
+    ctx.writeState(stateUpdate);
 
     ctx.appendEvent("plan_review", {
       round: roundNum,

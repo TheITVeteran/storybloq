@@ -72,6 +72,7 @@ function makeState(overrides: Partial<FullSessionState> = {}): FullSessionState 
     filedDeferrals: [],
     pendingDeferrals: [],
     deferralsUnfiled: false,
+    lensReviewHistory: [],
     ...overrides,
   } as FullSessionState;
 }
@@ -384,7 +385,7 @@ describe("resolveRecipe", () => {
     });
     expect(recipe.defaults.maxTicketsPerSession).toBe(0);
     expect(recipe.defaults.compactThreshold).toBe("critical");
-    expect(recipe.defaults.reviewBackends).toEqual(["codex", "agent"]); // unchanged
+    expect(recipe.defaults.reviewBackends).toEqual(["lenses", "codex", "agent"]); // T-181: lenses added
   });
 
   it("includes TEST and WRITE_TESTS stages by default", () => {

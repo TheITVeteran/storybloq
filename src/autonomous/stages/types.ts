@@ -217,3 +217,45 @@ export interface WorkflowStage {
   report(ctx: StageContext, report: GuideReportInput): Promise<StageAdvance>;
   skip?(ctx: StageContext): boolean;
 }
+
+// ── T-181: Shared lens history accumulation ────────────────────
+
+interface LensHistoryEntry {
+  ticketId: string;
+  stage: "CODE_REVIEW" | "PLAN_REVIEW";
+  lens: string;
+  category: string;
+  severity: string;
+  disposition: "open" | "addressed" | "contested" | "deferred";
+  description: string;
+  timestamp: string;
+}
+
+/**
+ * Build lens history entries from review findings and merge with existing history.
+ * Dedup key: ticketId:stage:lens:category (description excluded -- LLM rephrasing
+ * across rounds would defeat dedup and inflate totals for lesson-capture thresholds).
+ */
+export function buildLensHistoryUpdate(
+  findings: readonly { category: string; severity: string; disposition?: string; description: string; [k: string]: unknown }[],
+  existing: readonly LensHistoryEntry[],
+  ticketId: string,
+  stage: "CODE_REVIEW" | "PLAN_REVIEW",
+): LensHistoryEntry[] | null {
+  const existingKeys = new Set(
+    existing.map((e) => `${e.ticketId}:${e.stage}:${e.lens}:${e.category}`),
+  );
+  const newEntries = findings
+    .map((f) => ({
+      ticketId,
+      stage,
+      lens: typeof (f as Record<string, unknown>).lens === "string" && (f as Record<string, unknown>).lens !== "" ? (f as Record<string, unknown>).lens as string : "unknown",
+      category: f.category,
+      severity: f.severity,
+      disposition: f.disposition ?? "open",
+      description: f.description,
+      timestamp: new Date().toISOString(),
+    }))
+    .filter((e) => !existingKeys.has(`${e.ticketId}:${e.stage}:${e.lens}:${e.category}`));
+  return newEntries.length > 0 ? [...existing, ...newEntries] : null;
+}
