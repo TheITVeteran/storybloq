@@ -21,6 +21,7 @@ export class LessonCaptureStage implements WorkflowStage {
     const planReviews = ctx.state.reviews.plan ?? [];
     const codeReviews = ctx.state.reviews.code ?? [];
     const ticketsDone = ctx.state.completedTickets.length;
+    const issuesDone = (ctx.state.resolvedIssues ?? []).length;
 
     // Summarize findings across all review rounds
     const planFindings = planReviews.reduce((sum, r) => sum + (r.findingCount ?? 0), 0);
@@ -48,7 +49,7 @@ export class LessonCaptureStage implements WorkflowStage {
       instruction: [
         "# Capture Lessons from Review Findings",
         "",
-        `This session completed ${ticketsDone} ticket(s). Review summary:`,
+        `This session completed ${ticketsDone} ticket(s) and ${issuesDone} issue(s). Review summary:`,
         `- **Plan reviews:** ${planReviews.length} round(s), ${planCritical} critical, ${planMajor} major, ${planFindings} total findings`,
         `- **Code reviews:** ${codeReviews.length} round(s), ${codeCritical} critical, ${codeMajor} major, ${codeFindings} total findings`,
         "",

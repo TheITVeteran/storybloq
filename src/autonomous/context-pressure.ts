@@ -45,7 +45,9 @@ const THRESHOLDS: Record<string, { critical: Limits; high: Limits; medium: Limit
  */
 export function evaluatePressure(state: FullSessionState): PressureLevel {
   const calls = state.contextPressure?.guideCallCount ?? state.guideCallCount ?? 0;
-  const tickets = state.contextPressure?.ticketsCompleted ?? state.completedTickets?.length ?? 0;
+  // ISS-084: Always compute from source arrays (not cached counter) to avoid
+  // stale values during chained goto transitions (e.g., FINALIZE -> COMPLETE)
+  const tickets = (state.completedTickets?.length ?? 0) + (state.resolvedIssues?.length ?? 0);
   const eventsBytes = state.contextPressure?.eventsLogBytes ?? 0;
 
   const tier = state.config?.compactThreshold ?? "high";

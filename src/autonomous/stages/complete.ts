@@ -25,6 +25,8 @@ export class CompleteStage implements WorkflowStage {
     });
 
     const ticketsDone = ctx.state.completedTickets.length;
+    const issuesDone = (ctx.state.resolvedIssues ?? []).length;
+    const totalWorkDone = ticketsDone + issuesDone;
     const maxTickets = ctx.state.config.maxTicketsPerSession;
     const mode = ctx.state.mode ?? "auto";
 
@@ -47,17 +49,19 @@ export class CompleteStage implements WorkflowStage {
       } as StageAdvance;
     }
 
-    // T-147: Periodic checkpoint handover (non-blocking, best-effort)
+    // ISS-084: Checkpoint uses totalWorkDone (tickets + issues)
     const handoverInterval = ctx.state.config.handoverInterval ?? 5;
-    if (handoverInterval > 0 && ticketsDone > 0 && ticketsDone % handoverInterval === 0) {
+    if (handoverInterval > 0 && totalWorkDone > 0 && totalWorkDone % handoverInterval === 0) {
       try {
         const { handleHandoverCreate } = await import("../../cli/commands/handover.js");
         const completedIds = ctx.state.completedTickets.map((t) => t.id).join(", ");
+        const resolvedIds = (ctx.state.resolvedIssues ?? []).join(", ");
         const content = [
-          `# Checkpoint — ${ticketsDone} tickets completed`,
+          `# Checkpoint — ${totalWorkDone} items completed`,
           "",
           `**Session:** ${ctx.state.sessionId}`,
-          `**Tickets:** ${completedIds}`,
+          ...(completedIds ? [`**Tickets:** ${completedIds}`] : []),
+          ...(resolvedIds ? [`**Issues resolved:** ${resolvedIds}`] : []),
           "",
           "This is an automatic mid-session checkpoint. The session is still active.",
         ].join("\n");
@@ -71,31 +75,24 @@ export class CompleteStage implements WorkflowStage {
         await saveSnapshot(ctx.root, loadResult);
       } catch { /* best-effort */ }
 
-      ctx.appendEvent("checkpoint", { ticketsDone, interval: handoverInterval });
+      ctx.appendEvent("checkpoint", { ticketsDone, issuesDone, totalWorkDone, interval: handoverInterval });
     }
 
-    // Determine next action
+    // ISS-084: Session cap uses totalWorkDone (tickets + issues). Cap takes precedence.
+    const { state: projectState } = await ctx.loadProject();
     let nextTarget: string;
 
-    if (maxTickets > 0 && ticketsDone >= maxTickets) {
+    if (maxTickets > 0 && totalWorkDone >= maxTickets) {
       nextTarget = "HANDOVER";
     } else {
-      nextTarget = "PICK_TICKET";
-    }
-
-    // Check if more tickets available
-    const { state: projectState } = await ctx.loadProject();
-    const nextResult = nextTickets(projectState, 1);
-    if (nextResult.kind !== "found") {
-      // T-153: Before ending, check for high/critical open issues
-      const highIssues = projectState.issues.filter(
-        i => i.status === "open" && (i.severity === "critical" || i.severity === "high"),
-      );
-      if (highIssues.length > 0) {
-        // Route to PICK_TICKET where issue surfacing will present them
+      // Check if more work available (tickets or issues)
+      const nextResult = nextTickets(projectState, 1);
+      if (nextResult.kind === "found") {
         nextTarget = "PICK_TICKET";
       } else {
-        nextTarget = "HANDOVER";
+        // ISS-084: Check for ANY open issues, not just high/critical
+        const openIssues = projectState.issues.filter(i => i.status === "open");
+        nextTarget = openIssues.length > 0 ? "PICK_TICKET" : "HANDOVER";
       }
     }
 
@@ -116,7 +113,7 @@ export class CompleteStage implements WorkflowStage {
         target: "HANDOVER",
         result: {
           instruction: [
-            `# Session Complete — ${ticketsDone} ticket(s) done`,
+            `# Session Complete — ${ticketsDone} ticket(s) and ${issuesDone} issue(s) done`,
             "",
             "Write a session handover summarizing what was accomplished, decisions made, and what's next.",
             "",

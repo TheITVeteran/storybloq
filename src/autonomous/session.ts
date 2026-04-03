@@ -234,7 +234,8 @@ export function refreshLease(state: FullSessionState): FullSessionState {
     contextPressure: {
       ...state.contextPressure,
       guideCallCount: newCallCount,
-      ticketsCompleted: state.completedTickets?.length ?? 0,
+      // ISS-084: Include resolved issues in work count
+      ticketsCompleted: (state.completedTickets?.length ?? 0) + (state.resolvedIssues?.length ?? 0),
     },
   };
 }

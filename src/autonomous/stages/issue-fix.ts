@@ -8,8 +8,8 @@ import type { GuideReportInput } from "../session-types.js";
  * report(): Verify issue status changed to resolved, goto FINALIZE.
  *
  * Uses goto transitions (not pipeline walker) since ISSUE_FIX is not in
- * the main pipeline. After FINALIZE commits, routing returns to PICK_TICKET
- * (bypassing COMPLETE -- issues don't count toward ticket cap).
+ * the main pipeline. After FINALIZE commits, routing goes through COMPLETE
+ * (ISS-084: issues count toward session cap and checkpoint handovers).
  */
 export class IssueFixStage implements WorkflowStage {
   readonly id = "ISSUE_FIX";

@@ -1368,7 +1368,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       instruction: [
         "# Resumed After Compact — Continue Working",
         "",
-        `${written.completedTickets.length} ticket(s) done so far. Context compacted. Pick the next ticket immediately.`,
+        `${written.completedTickets.length} ticket(s) and ${(written.resolvedIssues ?? []).length} issue(s) done so far. Context compacted. Pick the next ticket or issue immediately.`,
         "",
         candidatesText,
         "",
@@ -1530,8 +1530,10 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
 
   // T-178: Soft gate — reject context-motivated cancel in active auto sessions
   const isAutoMode = info.state.mode === "auto" || !info.state.mode;
+  // ISS-084: Count both tickets and issues toward session cap
+  const totalDone = info.state.completedTickets.length + (info.state.resolvedIssues?.length ?? 0);
   const hasTicketsRemaining = (info.state.config.maxTicketsPerSession === 0) ||
-    (info.state.completedTickets.length < info.state.config.maxTicketsPerSession);
+    (totalDone < info.state.config.maxTicketsPerSession);
   const isWorkingState = !["SESSION_END", "HANDOVER", "COMPACT"].includes(info.state.state);
 
   if (isAutoMode && hasTicketsRemaining && isWorkingState) {
@@ -1541,7 +1543,7 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
         text: [
           "# Cancel Rejected — Session Still Active",
           "",
-          `You have completed ${info.state.completedTickets.length} ticket(s) with more work remaining.`,
+          `You have completed ${info.state.completedTickets.length} ticket(s) and ${(info.state.resolvedIssues ?? []).length} issue(s) with more work remaining.`,
           "Do NOT cancel an autonomous session due to context size.",
           "If you need to manage context, Claude Code handles compaction automatically.",
           "",
@@ -1620,7 +1622,7 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
 
   const stashNote = stashPopFailed ? " Auto-stash pop failed — run `git stash pop` manually." : "";
   return {
-    content: [{ type: "text", text: `Session ${args.sessionId} cancelled. ${written.completedTickets.length} ticket(s) were completed.${stashNote}` }],
+    content: [{ type: "text", text: `Session ${args.sessionId} cancelled. ${written.completedTickets.length} ticket(s) and ${(written.resolvedIssues ?? []).length} issue(s) were completed.${stashNote}` }],
   };
 }
 
@@ -1654,7 +1656,7 @@ function guideResult(
   const summary: SessionSummary = {
     ticket: state.ticket ? `${state.ticket.id}: ${state.ticket.title}` : "none",
     risk: state.ticket?.risk ?? "unknown",
-    completed: state.completedTickets.map((t) => t.id),
+    completed: [...state.completedTickets.map((t) => t.id), ...(state.resolvedIssues ?? [])],
     currentStep: currentState,
     contextPressure: state.contextPressure?.level ?? "low",
     branch: state.git?.branch ?? null,

@@ -10,6 +10,9 @@ import { gitDiffCachedNames, gitHead, gitDiffTreeNames } from "../git-inspector.
  * 2. precommit_passed → verify staging intact after hooks
  * 3. commit_done → validate commit hash, advance to COMPLETE
  *
+ * ISS-084: Both ticket and issue fixes route through COMPLETE so session
+ * limits and checkpoint handovers apply uniformly.
+ *
  * enter(): Instruction to stage files.
  * report(): Process checkpoint actions via retry (sub-steps) and advance (commit done).
  *
@@ -293,7 +296,8 @@ export class FinalizeStage implements WorkflowStage {
       return { action: "retry", instruction: `No new commit detected: HEAD (${normalizedHash}) has not changed. Create a commit first, then report the new hash.` };
     }
 
-    // T-153: Issue-fix mode -- record resolved issue, route to PICK_TICKET
+    // ISS-084: Issue-fix mode -- record resolved issue, route through COMPLETE
+    // (so session limits and checkpoint handovers apply uniformly)
     const currentIssue = ctx.state.currentIssue;
     if (currentIssue) {
       ctx.writeState({
@@ -309,7 +313,7 @@ export class FinalizeStage implements WorkflowStage {
 
       ctx.appendEvent("commit", { commitHash: normalizedHash, issueId: currentIssue.id });
 
-      return { action: "goto", target: "PICK_TICKET" };
+      return { action: "goto", target: "COMPLETE" };
     }
 
     // Normal ticket-fix mode

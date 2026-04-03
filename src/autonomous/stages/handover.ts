@@ -17,9 +17,10 @@ export class HandoverStage implements WorkflowStage {
 
   async enter(ctx: StageContext): Promise<StageResult> {
     const ticketsDone = ctx.state.completedTickets.length;
+    const issuesDone = (ctx.state.resolvedIssues ?? []).length;
     return {
       instruction: [
-        `# Session Complete — ${ticketsDone} ticket(s) done`,
+        `# Session Complete — ${ticketsDone} ticket(s) and ${issuesDone} issue(s) done`,
         "",
         "Write a session handover summarizing what was accomplished, decisions made, and what's next.",
         "",
@@ -76,10 +77,13 @@ export class HandoverStage implements WorkflowStage {
 
     ctx.appendEvent("session_end", {
       ticketsCompleted: ctx.state.completedTickets.length,
+      issuesResolved: (ctx.state.resolvedIssues ?? []).length,
       handoverFailed,
     });
 
     const ticketsDone = ctx.state.completedTickets.length;
+    const issuesDone = (ctx.state.resolvedIssues ?? []).length;
+    const resolvedList = (ctx.state.resolvedIssues ?? []).map((id) => `- ${id} (resolved)`).join("\n");
     // Terminal — return advance but the walker will see SESSION_END is terminal
     return {
       action: "advance",
@@ -87,9 +91,10 @@ export class HandoverStage implements WorkflowStage {
         instruction: [
           "# Session Complete",
           "",
-          `${ticketsDone} ticket(s) completed.${handoverFailed ? " Handover creation failed — fallback saved to session directory." : " Handover written."}${stashPopFailed ? " Auto-stash pop failed — run `git stash pop` manually." : ""} Session ended.`,
+          `${ticketsDone} ticket(s) and ${issuesDone} issue(s) completed.${handoverFailed ? " Handover creation failed — fallback saved to session directory." : " Handover written."}${stashPopFailed ? " Auto-stash pop failed — run `git stash pop` manually." : ""} Session ended.`,
           "",
           ctx.state.completedTickets.map((t) => `- ${t.id}${t.title ? `: ${t.title}` : ""} (${t.commitHash ?? "no commit"})`).join("\n"),
+          ...(resolvedList ? [resolvedList] : []),
         ].join("\n"),
         reminders: [],
         transitionedFrom: "HANDOVER",

@@ -25,19 +25,24 @@ export class PickTicketStage implements WorkflowStage {
       ).join("\n");
     }
 
-    // T-153: Surface high/critical open issues
-    const highIssues = projectState.issues.filter(
-      i => i.status === "open" && (i.severity === "critical" || i.severity === "high"),
-    );
+    // ISS-084: Surface ALL open issues (severity affects display order, not work-remaining check)
+    const allOpenIssues = projectState.issues.filter(i => i.status === "open");
+    const highIssues = allOpenIssues.filter(i => i.severity === "critical" || i.severity === "high");
+    const otherIssues = allOpenIssues.filter(i => i.severity !== "critical" && i.severity !== "high");
     let issuesText = "";
     if (highIssues.length > 0) {
       issuesText = "\n\n## Open Issues (high+ severity)\n\n" + highIssues.map(
         (i, idx) => `${idx + 1}. **${i.id}: ${i.title}** (${i.severity})`,
       ).join("\n");
     }
+    if (otherIssues.length > 0) {
+      issuesText += "\n\n## Open Issues (medium/low)\n\n" + otherIssues.map(
+        (i, idx) => `${idx + 1}. **${i.id}: ${i.title}** (${i.severity})`,
+      ).join("\n");
+    }
 
     const topCandidate = candidates.kind === "found" ? candidates.candidates[0] : null;
-    const hasIssues = highIssues.length > 0;
+    const hasIssues = allOpenIssues.length > 0;
 
     // ISS-075: If nothing left to do, route to COMPLETE (which handles HANDOVER/postComplete)
     if (!topCandidate && candidates.kind !== "found" && !hasIssues) {
@@ -67,7 +72,7 @@ export class PickTicketStage implements WorkflowStage {
           "",
           "Or to fix an issue:",
           '```json',
-          `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "issue_picked", "issueId": "${highIssues[0].id}" } }`,
+          `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "issue_picked", "issueId": "${(highIssues[0] ?? allOpenIssues[0]).id}" } }`,
           '```',
         ] : []),
       ].join("\n"),

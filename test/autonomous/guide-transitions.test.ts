@@ -59,8 +59,10 @@ describe("evaluatePressure (ISS-034)", () => {
     expect(evaluatePressure(state)).toBe("low");
   });
 
+  // ISS-084: evaluatePressure now computes from source arrays, not cached counter
   it("default 'high' tier: 3 tickets = medium (not critical)", () => {
     const state = makeState({
+      completedTickets: Array.from({ length: 3 }, (_, i) => ({ id: `T-${i}`, title: `t${i}` })),
       contextPressure: { level: "low", guideCallCount: 10, ticketsCompleted: 3, compactionCount: 0, eventsLogBytes: 0 },
     });
     expect(evaluatePressure(state)).toBe("medium");
@@ -68,6 +70,7 @@ describe("evaluatePressure (ISS-034)", () => {
 
   it("default 'high' tier: 5 tickets = high", () => {
     const state = makeState({
+      completedTickets: Array.from({ length: 5 }, (_, i) => ({ id: `T-${i}`, title: `t${i}` })),
       contextPressure: { level: "low", guideCallCount: 10, ticketsCompleted: 5, compactionCount: 0, eventsLogBytes: 0 },
     });
     expect(evaluatePressure(state)).toBe("high");
@@ -75,6 +78,7 @@ describe("evaluatePressure (ISS-034)", () => {
 
   it("default 'high' tier: 8 tickets = critical", () => {
     const state = makeState({
+      completedTickets: Array.from({ length: 8 }, (_, i) => ({ id: `T-${i}`, title: `t${i}` })),
       contextPressure: { level: "low", guideCallCount: 10, ticketsCompleted: 8, compactionCount: 0, eventsLogBytes: 0 },
     });
     expect(evaluatePressure(state)).toBe("critical");
@@ -89,6 +93,7 @@ describe("evaluatePressure (ISS-034)", () => {
 
   it("'critical' tier has higher thresholds than 'high'", () => {
     const state = makeState({
+      completedTickets: Array.from({ length: 8 }, (_, i) => ({ id: `T-${i}`, title: `t${i}` })),
       config: { maxTicketsPerSession: 0, compactThreshold: "critical", reviewBackends: ["codex", "agent"] },
       contextPressure: { level: "low", guideCallCount: 10, ticketsCompleted: 8, compactionCount: 0, eventsLogBytes: 0 },
     });
@@ -98,6 +103,7 @@ describe("evaluatePressure (ISS-034)", () => {
 
   it("'medium' tier has lower thresholds", () => {
     const state = makeState({
+      completedTickets: Array.from({ length: 2 }, (_, i) => ({ id: `T-${i}`, title: `t${i}` })),
       config: { maxTicketsPerSession: 0, compactThreshold: "medium", reviewBackends: ["codex", "agent"] },
       contextPressure: { level: "low", guideCallCount: 10, ticketsCompleted: 2, compactionCount: 0, eventsLogBytes: 0 },
     });

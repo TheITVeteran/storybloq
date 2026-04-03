@@ -15,7 +15,7 @@ const TRANSITIONS: Record<WorkflowState, readonly (WorkflowState | "*")[]> = {
   TEST:          ["CODE_REVIEW", "IMPLEMENT", "TEST"],  // pass → CODE_REVIEW, fail → IMPLEMENT, retry
   CODE_REVIEW:   ["VERIFY", "FINALIZE", "IMPLEMENT", "PLAN", "CODE_REVIEW", "SESSION_END"], // approve → VERIFY/FINALIZE, reject → IMPLEMENT/PLAN, stay for next round; SESSION_END for tiered exit
   VERIFY:        ["FINALIZE", "IMPLEMENT", "VERIFY"],  // pass → FINALIZE, fail → IMPLEMENT, retry
-  FINALIZE:      ["COMPLETE", "PICK_TICKET"],  // PICK_TICKET for issue-fix flow (bypass COMPLETE)
+  FINALIZE:      ["COMPLETE", "PICK_TICKET"],  // ISS-084: issues now route through COMPLETE too; PICK_TICKET kept for in-flight session compat
   COMPLETE:      ["PICK_TICKET", "HANDOVER", "ISSUE_SWEEP", "SESSION_END"],
   ISSUE_FIX:     ["FINALIZE", "PICK_TICKET", "ISSUE_FIX"],  // T-153: fix done → FINALIZE, cancel → PICK_TICKET, retry self
   LESSON_CAPTURE: ["ISSUE_SWEEP", "HANDOVER", "LESSON_CAPTURE"],  // advance → ISSUE_SWEEP, retry self, done → HANDOVER
