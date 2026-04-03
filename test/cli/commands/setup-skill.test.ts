@@ -407,13 +407,14 @@ describe("setup-skill", () => {
     expect(tsContent).toContain('"reference.md"');
   });
 
-  it("setup-skill.ts handles design directory with copyDirRecursive", async () => {
+  it("setup-skill.ts handles subdirectory skills with copyDirRecursive", async () => {
     const tsContent = await readFile(
       join(PROJECT_ROOT, "src", "cli", "commands", "setup-skill.ts"),
       "utf-8",
     );
     expect(tsContent).toContain("copyDirRecursive");
-    expect(tsContent).toContain("designSrcDir");
+    expect(tsContent).toContain('"design"');
+    expect(tsContent).toContain('"review-lenses"');
   });
 });
 

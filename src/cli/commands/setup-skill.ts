@@ -362,17 +362,19 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
     }
   }
 
-  // Copy design/ subdirectory (frontend design skill)
-  const designSrcDir = join(srcSkillDir, "design");
-  if (existsSync(designSrcDir)) {
-    const designDestDir = join(skillDir, "design");
-    try {
-      const designFiles = await copyDirRecursive(designSrcDir, designDestDir);
-      for (const f of designFiles) writtenFiles.push(`design/${f}`);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`Warning: design skill copy failed: ${msg}\n`);
-      missingFiles.push("design/");
+  // Copy subdirectory-based skills (design, review-lenses)
+  for (const subdir of ["design", "review-lenses"]) {
+    const srcDir = join(srcSkillDir, subdir);
+    if (existsSync(srcDir)) {
+      const destDir = join(skillDir, subdir);
+      try {
+        const files = await copyDirRecursive(srcDir, destDir);
+        for (const f of files) writtenFiles.push(`${subdir}/${f}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`Warning: ${subdir} skill copy failed: ${msg}\n`);
+        missingFiles.push(`${subdir}/`);
+      }
     }
   }
 
