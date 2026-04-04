@@ -5,7 +5,7 @@
  * actual session state files on disk. Git operations are mocked.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,6 +32,7 @@ import {
   readEvents,
 } from "../../src/autonomous/session.js";
 import type { FullSessionState } from "../../src/autonomous/session-types.js";
+import { writeResumeMarker } from "../../src/autonomous/resume-marker.js";
 
 const mockedGitHead = vi.mocked(gitHead);
 
@@ -329,5 +330,51 @@ describe("T-187: resumed event logging", () => {
     expect(resumed).toHaveLength(0);
     const blocked = events.filter(e => e.type === "resume_blocked");
     expect(blocked).toHaveLength(1);
+  });
+});
+
+describe("T-183: resume marker cleanup", () => {
+  const markerPath = () => join(root, ".claude", "rules", "autonomous-resume.md");
+
+  it("Branch A: removes marker after successful resume", async () => {
+    const session = createCompactSession(root, { preCompactState: "PLAN" });
+    mockedGitHead.mockResolvedValue({ ok: true, data: { hash: "abc123" } });
+    writeResumeMarker(root, session.sessionId, { completedTickets: [] });
+    expect(existsSync(markerPath())).toBe(true);
+
+    await handleAutonomousGuide(root, {
+      action: "resume",
+      sessionId: session.sessionId,
+    });
+
+    expect(existsSync(markerPath())).toBe(false);
+  });
+
+  it("Branch B: removes marker after drift resume", async () => {
+    const session = createCompactSession(root, { preCompactState: "PLAN" });
+    mockedGitHead.mockResolvedValue({ ok: true, data: { hash: "drifted-head" } });
+    writeResumeMarker(root, session.sessionId, { completedTickets: [] });
+    expect(existsSync(markerPath())).toBe(true);
+
+    await handleAutonomousGuide(root, {
+      action: "resume",
+      sessionId: session.sessionId,
+    });
+
+    expect(existsSync(markerPath())).toBe(false);
+  });
+
+  it("Branch C: preserves marker when git fails", async () => {
+    const session = createCompactSession(root, { preCompactState: "PLAN" });
+    mockedGitHead.mockResolvedValue({ ok: false, error: "git not available" } as any);
+    writeResumeMarker(root, session.sessionId, { completedTickets: [] });
+    expect(existsSync(markerPath())).toBe(true);
+
+    await handleAutonomousGuide(root, {
+      action: "resume",
+      sessionId: session.sessionId,
+    });
+
+    expect(existsSync(markerPath())).toBe(true);
   });
 });

@@ -19,6 +19,7 @@ import {
 } from "../../autonomous/session.js";
 import { WORKFLOW_STATES } from "../../autonomous/session-types.js";
 import { loadProject } from "../../core/project-loader.js";
+import { writeResumeMarker, removeResumeMarker } from "../../autonomous/resume-marker.js";
 
 // ---------------------------------------------------------------------------
 // session-compact-prepare (PreCompact hook)
@@ -48,6 +49,14 @@ export async function handleSessionCompactPrepare(): Promise<void> {
         process.stderr.write(`[claudestory] compact-prepare: ${err instanceof Error ? err.message : String(err)}\n`);
         return;
       }
+
+      // T-183: Write resume marker for 100% compaction survival
+      writeResumeMarker(root, active.state.sessionId, {
+        ticket: active.state.ticket,
+        completedTickets: active.state.completedTickets,
+        resolvedIssues: active.state.resolvedIssues,
+        preCompactState: active.state.preCompactState ?? active.state.state,
+      });
 
       // THEN snapshot (slower, can fail — compactPending is already set)
       try {
@@ -82,7 +91,11 @@ export async function handleSessionResumePrompt(): Promise<void> {
   if (!root) return; // No .story/ — silent
 
   const match = findResumableSession(root);
-  if (!match) return; // No resumable session — silent
+  if (!match) {
+    // T-183: Clean orphaned marker if no compactPending session exists at all
+    removeResumeMarker(root);
+    return;
+  }
 
   const { info, stale } = match;
   const sessionId = info.state.sessionId;
@@ -185,6 +198,9 @@ export async function handleSessionClearCompact(root: string, sessionId?: string
       },
     });
 
+    // T-183: Clean resume marker (session is terminal)
+    removeResumeMarker(root);
+
     return `Session ${info.state.sessionId} ended (unrecoverable — invalid preCompactState: ${preCompactState ?? "null"}). Run "start" for a new session.`;
   });
 }
@@ -259,6 +275,9 @@ export async function handleSessionStop(root: string, sessionId?: string): Promi
       timestamp: new Date().toISOString(),
       data: { previousState: info.state.state, ticketId: ticketId ?? null, ticketReleased },
     });
+
+    // T-183: Clean resume marker
+    removeResumeMarker(root);
 
     return `Session ${info.state.sessionId} stopped.${ticketReleased ? ` Ticket ${ticketId} released to open.` : ticketId ? ` Ticket ${ticketId} may need manual cleanup.` : ""}`;
   });

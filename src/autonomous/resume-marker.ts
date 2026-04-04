@@ -1,0 +1,66 @@
+/**
+ * T-183: Resume marker file for 100% compaction survival.
+ *
+ * Writes a `.claude/rules/autonomous-resume.md` marker that Claude Code reads
+ * automatically on every turn. This is a redundant safety net -- the existing
+ * SessionStart hook chain stays as-is.
+ *
+ * Path assumption: `root` from discoverProjectRoot() is the git/project root
+ * where Claude Code reads `.claude/rules/`. This holds for standalone repos
+ * and worktrees (each worktree has its own `.claude/`).
+ */
+import { mkdirSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+const MARKER_FILENAME = "autonomous-resume.md";
+
+export function writeResumeMarker(root: string, sessionId: string, state: {
+  ticket?: { id: string; title: string } | null;
+  completedTickets: { id: string }[];
+  resolvedIssues?: string[];
+  preCompactState?: string | null;
+}): void {
+  try {
+    const rulesDir = join(root, ".claude", "rules");
+    mkdirSync(rulesDir, { recursive: true });
+
+    const ticketInfo = state.ticket
+      ? `Working on: ${state.ticket.id} (${state.ticket.title})`
+      : "Between tickets";
+    const progress = `Progress: ${state.completedTickets.length} tickets completed, ${(state.resolvedIssues ?? []).length} issues resolved`;
+
+    const lines = [
+      "CRITICAL: An autonomous coding session is active and waiting to resume.",
+      "",
+      `Session: ${sessionId}`,
+      ticketInfo,
+      progress,
+    ];
+    if (state.preCompactState) {
+      lines.push(`State before compaction: ${state.preCompactState}`);
+    }
+    lines.push(
+      "",
+      "You MUST call `claudestory_autonomous_guide` with:",
+      `{"sessionId": "${sessionId}", "action": "resume"}`,
+      "",
+      "Do NOT do any other work until you have called this.",
+      "Do NOT manually create tickets, issues, or handovers.",
+      "The guide manages your workflow.",
+    );
+    const content = lines.join("\n") + "\n";
+
+    writeFileSync(join(rulesDir, MARKER_FILENAME), content, "utf-8");
+  } catch {
+    // Best-effort -- marker is redundancy, not primary mechanism
+  }
+}
+
+export function removeResumeMarker(root: string): void {
+  try {
+    const markerPath = join(root, ".claude", "rules", MARKER_FILENAME);
+    if (existsSync(markerPath)) unlinkSync(markerPath);
+  } catch {
+    // Best-effort
+  }
+}

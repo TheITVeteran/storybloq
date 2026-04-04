@@ -41,6 +41,7 @@ import { buildRecap } from "../core/snapshot.js";
 import { nextTickets } from "../core/queries.js";
 import { recommend, type RecommendOptions } from "../core/recommend.js";
 import { checkVersionMismatch, getInstalledVersion, getRunningVersion } from "./version-check.js";
+import { writeResumeMarker, removeResumeMarker } from "./resume-marker.js";
 import { isTargetedMode, getRemainingTargets, buildTargetedCandidatesText, buildTargetedPickInstruction, buildTargetedStuckHandover } from "./target-work.js";
 import {
   handleHandoverLatest,
@@ -599,6 +600,9 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     reviewBackends: sessionConfig.reviewBackends,
     stages: sessionConfig.stageOverrides,
   });
+
+  // T-183: Clean stale resume marker before creating a new session
+  removeResumeMarker(root);
 
   // Create session — wrapped in try/finally for cleanup on failure
   const session = createSession(root, recipe, wsId, sessionConfig);
@@ -1441,6 +1445,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
         recoveryState: mapping.state,
       },
     });
+    removeResumeMarker(root);
 
     // State-specific actionable instructions after drift recovery
     const driftPreamble = `**HEAD changed during compaction** (expected ${expectedHead.slice(0, 8)}, got ${headResult.data.hash.slice(0, 8)}). Review state invalidated.\n\n`;
@@ -1560,6 +1565,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       headMatch: true,
     },
   });
+  removeResumeMarker(root);
 
   // If resuming at PICK_TICKET, load candidates and give directive instructions
   if (resumeState === "PICK_TICKET") {
@@ -1711,6 +1717,14 @@ async function handlePreCompact(root: string, args: GuideInput): Promise<McpTool
     await saveSnapshot(root, loadResult);
   } catch { /* best-effort */ }
 
+  // T-183: Write resume marker for 100% compaction survival
+  writeResumeMarker(root, result.sessionId, {
+    ticket: info.state.ticket,
+    completedTickets: info.state.completedTickets,
+    resolvedIssues: info.state.resolvedIssues,
+    preCompactState: result.preCompactState,
+  });
+
   // Read back actual written state (revision and timestamps must match disk)
   const reread = findSessionById(root, args.sessionId);
   const written = reread?.state ?? info.state;
@@ -1842,6 +1856,9 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
       stashPopFailed,
     },
   });
+
+  // T-183: Clean resume marker
+  removeResumeMarker(root);
 
   const stashNote = stashPopFailed ? " Auto-stash pop failed — run `git stash pop` manually." : "";
   return {

@@ -4,6 +4,7 @@ import type { WorkflowStage, StageResult, StageAdvance, StageContext } from "./t
 import type { GuideReportInput } from "../session-types.js";
 import { handleHandoverCreate } from "../../cli/commands/handover.js";
 import { gitStashPop } from "../git-inspector.js";
+import { removeResumeMarker } from "../resume-marker.js";
 
 /**
  * HANDOVER stage — Claude writes a session handover document.
@@ -80,6 +81,9 @@ export class HandoverStage implements WorkflowStage {
       issuesResolved: (ctx.state.resolvedIssues ?? []).length,
       handoverFailed,
     });
+
+    // T-183: Clean resume marker
+    removeResumeMarker(ctx.root);
 
     const ticketsDone = ctx.state.completedTickets.length;
     const issuesDone = (ctx.state.resolvedIssues ?? []).length;
