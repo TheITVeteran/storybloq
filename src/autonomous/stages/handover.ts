@@ -5,6 +5,9 @@ import type { GuideReportInput } from "../session-types.js";
 import { handleHandoverCreate } from "../../cli/commands/handover.js";
 import { gitStashPop } from "../git-inspector.js";
 import { removeResumeMarker } from "../resume-marker.js";
+import { formatCompactReport } from "../../core/session-report-formatter.js";
+import { loadProject } from "../../core/project-loader.js";
+import { nextTickets } from "../../core/queries.js";
 
 /**
  * HANDOVER stage — Claude writes a session handover document.
@@ -85,6 +88,21 @@ export class HandoverStage implements WorkflowStage {
     // T-183: Clean resume marker
     removeResumeMarker(ctx.root);
 
+    // T-185: Build compact session report
+    let reportSection = "";
+    try {
+      const { state: projectState } = await loadProject(ctx.root);
+      const nextResult = nextTickets(projectState, 5);
+      const openIssues = projectState.issues.filter(i => i.status === "open" || i.status === "inprogress").slice(0, 5);
+      const remainingWork = {
+        tickets: nextResult.kind === "found"
+          ? nextResult.candidates.map(c => ({ id: c.ticket.id, title: c.ticket.title }))
+          : [],
+        issues: openIssues.map(i => ({ id: i.id, title: i.title, severity: i.severity })),
+      };
+      reportSection = "\n\n" + formatCompactReport({ state: ctx.state, endedAt: new Date().toISOString(), remainingWork });
+    } catch { /* best-effort */ }
+
     const ticketsDone = ctx.state.completedTickets.length;
     const issuesDone = (ctx.state.resolvedIssues ?? []).length;
     const resolvedList = (ctx.state.resolvedIssues ?? []).map((id) => `- ${id} (resolved)`).join("\n");
@@ -99,7 +117,7 @@ export class HandoverStage implements WorkflowStage {
           "",
           ctx.state.completedTickets.map((t) => `- ${t.id}${t.title ? `: ${t.title}` : ""} (${t.commitHash ?? "no commit"})`).join("\n"),
           ...(resolvedList ? [resolvedList] : []),
-        ].join("\n"),
+        ].join("\n") + reportSection,
         reminders: [],
         transitionedFrom: "HANDOVER",
       },

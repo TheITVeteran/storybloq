@@ -42,6 +42,7 @@ import { nextTickets } from "../core/queries.js";
 import { recommend, type RecommendOptions } from "../core/recommend.js";
 import { checkVersionMismatch, getInstalledVersion, getRunningVersion } from "./version-check.js";
 import { writeResumeMarker, removeResumeMarker } from "./resume-marker.js";
+import { formatCompactReport } from "../core/session-report-formatter.js";
 import { isTargetedMode, getRemainingTargets, buildTargetedCandidatesText, buildTargetedPickInstruction, buildTargetedStuckHandover } from "./target-work.js";
 import {
   handleHandoverLatest,
@@ -1872,9 +1873,24 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
   // T-183: Clean resume marker
   removeResumeMarker(root);
 
+  // T-185: Build compact session report
+  let reportSection = "";
+  try {
+    const { state: projectState } = await loadProject(root);
+    const nextResult = nextTickets(projectState, 5);
+    const openIssues = projectState.issues.filter(i => i.status === "open" || i.status === "inprogress").slice(0, 5);
+    const remainingWork = {
+      tickets: nextResult.kind === "found"
+        ? nextResult.candidates.map(c => ({ id: c.ticket.id, title: c.ticket.title }))
+        : [],
+      issues: openIssues.map(i => ({ id: i.id, title: i.title, severity: i.severity })),
+    };
+    reportSection = "\n\n" + formatCompactReport({ state: written, endedAt: new Date().toISOString(), remainingWork });
+  } catch { /* best-effort */ }
+
   const stashNote = stashPopFailed ? " Auto-stash pop failed — run `git stash pop` manually." : "";
   return {
-    content: [{ type: "text", text: `Session ${args.sessionId} cancelled. ${written.completedTickets.length} ticket(s) and ${(written.resolvedIssues ?? []).length} issue(s) were completed.${stashNote}` }],
+    content: [{ type: "text", text: `Session ${args.sessionId} cancelled. ${written.completedTickets.length} ticket(s) and ${(written.resolvedIssues ?? []).length} issue(s) were completed.${stashNote}${reportSection}` }],
   };
 }
 

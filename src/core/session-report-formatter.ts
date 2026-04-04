@@ -246,6 +246,67 @@ function buildProblemsSection(
   return ["## Problems", "", ...problems.map((p) => `- ${p}`)].join("\n");
 }
 
+// --- Compact report (T-185) ---
+
+export interface CompactReportData {
+  readonly state: FullSessionState;
+  readonly endedAt?: string;
+  readonly remainingWork?: {
+    tickets: { id: string; title: string }[];
+    issues: { id: string; title: string; severity: string }[];
+  };
+}
+
+export function formatCompactReport(data: CompactReportData): string {
+  const { state, remainingWork } = data;
+  const endTime = data.endedAt ?? state.lastGuideCall ?? new Date().toISOString();
+  const duration = state.startedAt ? formatDuration(state.startedAt, endTime) : "unknown";
+  const ticketCount = state.completedTickets.length;
+  const issueCount = (state.resolvedIssues ?? []).length;
+  const reviewRounds = state.reviews.plan.length + state.reviews.code.length;
+  const totalFindings = [...state.reviews.plan, ...state.reviews.code].reduce((s, r) => s + r.findingCount, 0);
+  const compactions = state.contextPressure?.compactionCount ?? 0;
+
+  const lines = [
+    "## Session Report",
+    "",
+    `**Duration:** ${duration} | **Tickets:** ${ticketCount} | **Issues:** ${issueCount} | **Reviews:** ${reviewRounds} rounds (${totalFindings} findings) | **Compactions:** ${compactions}`,
+  ];
+
+  if (ticketCount > 0) {
+    lines.push("", "### Completed", "| Ticket | Title | Duration |", "|--------|-------|----------|");
+    for (const t of state.completedTickets) {
+      const ticketDuration = t.startedAt && t.completedAt
+        ? formatDuration(t.startedAt, t.completedAt)
+        : "--";
+      const safeTitle = (t.title ?? "").replace(/\|/g, "\\|");
+      lines.push(`| ${t.id} | ${safeTitle} | ${ticketDuration} |`);
+    }
+
+    // Avg time per ticket
+    const timings = state.completedTickets
+      .filter(t => t.startedAt && t.completedAt)
+      .map(t => new Date(t.completedAt!).getTime() - new Date(t.startedAt!).getTime());
+    if (timings.length > 0) {
+      const avgMs = timings.reduce((a, b) => a + b, 0) / timings.length;
+      const avgMins = Math.round(avgMs / 60000);
+      lines.push("", `**Avg time per ticket:** ${avgMins}m`);
+    }
+  }
+
+  if (remainingWork && (remainingWork.tickets.length > 0 || remainingWork.issues.length > 0)) {
+    lines.push("", "### What's Left");
+    for (const t of remainingWork.tickets) {
+      lines.push(`- ${t.id}: ${t.title} (unblocked)`);
+    }
+    for (const i of remainingWork.issues) {
+      lines.push(`- ${i.id}: ${i.title} (${i.severity})`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 // --- Helpers ---
 
 function formatDuration(start: string, end: string): string {
