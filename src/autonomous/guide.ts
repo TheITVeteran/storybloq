@@ -1429,6 +1429,18 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       timestamp: new Date().toISOString(),
       data: { drift: true, previousState: resumeState, recoveryState: mapping.state, expectedHead, actualHead: headResult.data.hash, ticketId: info.state.ticket?.id },
     });
+    appendEvent(info.dir, {
+      rev: driftWritten.revision,
+      type: "resumed",
+      timestamp: new Date().toISOString(),
+      data: {
+        preCompactState: resumeState,
+        compactionCount: driftWritten.contextPressure?.compactionCount ?? 0,
+        ticketId: info.state.ticket?.id ?? null,
+        headMatch: false,
+        recoveryState: mapping.state,
+      },
+    });
 
     // State-specific actionable instructions after drift recovery
     const driftPreamble = `**HEAD changed during compaction** (expected ${expectedHead.slice(0, 8)}, got ${headResult.data.hash.slice(0, 8)}). Review state invalidated.\n\n`;
@@ -1536,6 +1548,17 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
     resumeBlocked: false,
     guideCallCount: 0,
     contextPressure: { ...resumePressure, level: evaluatePressure({ ...info.state, guideCallCount: 0, contextPressure: resumePressure } as FullSessionState) },
+  });
+  appendEvent(info.dir, {
+    rev: written.revision,
+    type: "resumed",
+    timestamp: new Date().toISOString(),
+    data: {
+      preCompactState: resumeState,
+      compactionCount: written.contextPressure?.compactionCount ?? 0,
+      ticketId: info.state.ticket?.id ?? null,
+      headMatch: true,
+    },
   });
 
   // If resuming at PICK_TICKET, load candidates and give directive instructions

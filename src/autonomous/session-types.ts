@@ -311,7 +311,12 @@ export const SessionStateSchema = z.object({
     commitHash: z.string().optional(),
     risk: z.string().optional(),
     realizedRisk: z.string().optional(),
+    startedAt: z.string().optional(),
+    completedAt: z.string().optional(),
   })).default([]),
+
+  // T-187: Per-ticket timing -- set when ticket is picked, cleared on commit
+  ticketStartedAt: z.string().nullable().default(null),
 
   // FINALIZE checkpoint
   finalizeCheckpoint: z.enum(["staged", "staged_override", "precommit_passed", "committed"]).nullable().default(null),

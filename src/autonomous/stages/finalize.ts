@@ -304,6 +304,7 @@ export class FinalizeStage implements WorkflowStage {
         finalizeCheckpoint: "committed",
         resolvedIssues: [...(ctx.state.resolvedIssues ?? []), currentIssue.id],
         currentIssue: null,
+        ticketStartedAt: null,
         git: {
           ...ctx.state.git,
           mergeBase: normalizedHash,
@@ -318,7 +319,15 @@ export class FinalizeStage implements WorkflowStage {
 
     // Normal ticket-fix mode
     const completedTicket = ctx.state.ticket
-      ? { id: ctx.state.ticket.id, title: ctx.state.ticket.title, commitHash: normalizedHash, risk: ctx.state.ticket.risk, realizedRisk: ctx.state.ticket.realizedRisk }
+      ? {
+          id: ctx.state.ticket.id,
+          title: ctx.state.ticket.title,
+          commitHash: normalizedHash,
+          risk: ctx.state.ticket.risk,
+          realizedRisk: ctx.state.ticket.realizedRisk,
+          startedAt: ctx.state.ticketStartedAt ?? undefined,
+          completedAt: new Date().toISOString(),
+        }
       : undefined;
 
     ctx.writeState({
@@ -327,6 +336,7 @@ export class FinalizeStage implements WorkflowStage {
         ? [...ctx.state.completedTickets, completedTicket]
         : ctx.state.completedTickets,
       ticket: undefined,
+      ticketStartedAt: null,
       git: {
         ...ctx.state.git,
         mergeBase: normalizedHash,

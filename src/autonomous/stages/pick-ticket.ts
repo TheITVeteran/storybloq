@@ -169,6 +169,7 @@ export class PickTicketStage implements WorkflowStage {
       ticket: { id: ticket.id, title: ticket.title, claimed: true },
       reviews: { plan: [], code: [] },
       finalizeCheckpoint: null,
+      ticketStartedAt: new Date().toISOString(),
     });
 
     // Produce PLAN instruction (advance with result for hybrid dispatch)

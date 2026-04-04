@@ -1,12 +1,28 @@
 /**
  * ISS-063: FINALIZE idempotent checkpoint + session ticket exclusion.
+ * T-187: Per-ticket timing in completedTickets.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+// Mock git-inspector for T-187 commit tests
+vi.mock("../../../src/autonomous/git-inspector.js", () => ({
+  gitHead: vi.fn().mockResolvedValue({ ok: true, data: { hash: "def456" } }),
+  gitStatus: vi.fn().mockResolvedValue({ ok: true, data: { clean: true, trackedDirty: [], untrackedPaths: [] } }),
+  gitMergeBase: vi.fn().mockResolvedValue({ ok: true, data: "abc123" }),
+  gitDiffStat: vi.fn().mockResolvedValue({ ok: false }),
+  gitDiffNames: vi.fn().mockResolvedValue({ ok: false }),
+  gitDiffCachedNames: vi.fn().mockResolvedValue({ ok: false }),
+  gitBlobHash: vi.fn().mockResolvedValue({ ok: false }),
+  gitStash: vi.fn().mockResolvedValue({ ok: true }),
+  gitStashPop: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
 import { StageContext, type ResolvedRecipe } from "../../../src/autonomous/stages/types.js";
 import { FinalizeStage } from "../../../src/autonomous/stages/finalize.js";
+import { gitHead } from "../../../src/autonomous/git-inspector.js";
 import type { FullSessionState } from "../../../src/autonomous/session-types.js";
 
 function makeState(overrides: Partial<FullSessionState> = {}): FullSessionState {
@@ -68,5 +84,93 @@ describe("ISS-063: FINALIZE idempotent checkpoint", () => {
     const advance = await stage.report(ctx, { completedAction: "files_staged" });
     expect(advance.action).toBe("retry");
     expect(advance.instruction).toContain("pre-commit");
+  });
+});
+
+describe("T-187: per-ticket timing in completedTickets", () => {
+  let testRoot: string;
+  let sessionDir: string;
+  const stage = new FinalizeStage();
+  const mockedGitHead = vi.mocked(gitHead);
+
+  beforeEach(() => {
+    testRoot = mkdtempSync(join(tmpdir(), "test-t187-"));
+    sessionDir = join(testRoot, ".story", "sessions", "test-session");
+    mkdirSync(sessionDir, { recursive: true });
+    mockedGitHead.mockResolvedValue({ ok: true, data: { hash: "def456" } });
+  });
+
+  afterEach(() => {
+    rmSync(testRoot, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("includes startedAt and completedAt when ticketStartedAt is set", async () => {
+    const startTime = "2026-04-04T10:00:00.000Z";
+    const state = makeState({
+      finalizeCheckpoint: "precommit_passed",
+      ticketStartedAt: startTime,
+    } as Partial<FullSessionState>);
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    const advance = await stage.report(ctx, { completedAction: "commit_done", commitHash: "def456" });
+
+    expect(advance.action).toBe("advance");
+    const written = JSON.parse(
+      readFileSync(join(sessionDir, "state.json"), "utf-8"),
+    ) as FullSessionState;
+    const last = written.completedTickets[written.completedTickets.length - 1];
+    expect(last.startedAt).toBe(startTime);
+    expect(last.completedAt).toBeDefined();
+    expect(new Date(last.completedAt!).getTime()).toBeGreaterThan(0);
+  });
+
+  it("clears ticketStartedAt after commit", async () => {
+    const state = makeState({
+      finalizeCheckpoint: "precommit_passed",
+      ticketStartedAt: "2026-04-04T10:00:00.000Z",
+    } as Partial<FullSessionState>);
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    await stage.report(ctx, { completedAction: "commit_done", commitHash: "def456" });
+
+    const written = JSON.parse(
+      readFileSync(join(sessionDir, "state.json"), "utf-8"),
+    ) as FullSessionState;
+    expect(written.ticketStartedAt).toBeNull();
+  });
+
+  it("startedAt is undefined when ticketStartedAt is null (backward compat)", async () => {
+    const state = makeState({
+      finalizeCheckpoint: "precommit_passed",
+    });
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    await stage.report(ctx, { completedAction: "commit_done", commitHash: "def456" });
+
+    const written = JSON.parse(
+      readFileSync(join(sessionDir, "state.json"), "utf-8"),
+    ) as FullSessionState;
+    const last = written.completedTickets[written.completedTickets.length - 1];
+    expect(last.startedAt).toBeUndefined();
+    expect(last.completedAt).toBeDefined();
+  });
+
+  it("clears ticketStartedAt in issue-fix commit path", async () => {
+    mockedGitHead.mockResolvedValue({ ok: true, data: { hash: "ghi789" } });
+    const state = makeState({
+      finalizeCheckpoint: "precommit_passed",
+      ticketStartedAt: "2026-04-04T09:00:00.000Z",
+      currentIssue: { id: "ISS-001", title: "Test issue", severity: "high" },
+      ticket: undefined,
+    } as Partial<FullSessionState>);
+    const ctx = new StageContext(testRoot, sessionDir, state, makeRecipe());
+
+    await stage.report(ctx, { completedAction: "commit_done", commitHash: "ghi789" });
+
+    const written = JSON.parse(
+      readFileSync(join(sessionDir, "state.json"), "utf-8"),
+    ) as FullSessionState;
+    expect(written.ticketStartedAt).toBeNull();
   });
 });

@@ -29,6 +29,7 @@ import {
   createSession,
   writeSessionSync,
   prepareForCompact,
+  readEvents,
 } from "../../src/autonomous/session.js";
 import type { FullSessionState } from "../../src/autonomous/session-types.js";
 
@@ -269,5 +270,64 @@ describe("handleResume integration (ISS-039)", () => {
     expect(state.lease?.expiresAt).toBeDefined();
     const expires = new Date(state.lease!.expiresAt!).getTime();
     expect(expires).toBeGreaterThan(Date.now() - 5000); // refreshed recently
+  });
+});
+
+describe("T-187: resumed event logging", () => {
+  it("Branch A: appends 'resumed' event with headMatch: true", async () => {
+    const session = createCompactSession(root, { preCompactState: "PLAN" });
+    mockedGitHead.mockResolvedValue({ ok: true, data: { hash: "abc123" } });
+
+    await handleAutonomousGuide(root, {
+      action: "resume",
+      sessionId: session.sessionId,
+    });
+
+    const sessDir = join(sessionsDir, session.sessionId);
+    const { events } = readEvents(sessDir);
+    const resumed = events.filter(e => e.type === "resumed");
+    expect(resumed).toHaveLength(1);
+    expect(resumed[0].data.headMatch).toBe(true);
+    expect(resumed[0].data.preCompactState).toBe("PLAN");
+    expect(resumed[0].data.ticketId).toBe("T-001");
+    expect(resumed[0].data.compactionCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("Branch B: appends both 'resume_conflict' and 'resumed' events", async () => {
+    const session = createCompactSession(root, { preCompactState: "PLAN" });
+    mockedGitHead.mockResolvedValue({ ok: true, data: { hash: "drifted-head" } });
+
+    await handleAutonomousGuide(root, {
+      action: "resume",
+      sessionId: session.sessionId,
+    });
+
+    const sessDir = join(sessionsDir, session.sessionId);
+    const { events } = readEvents(sessDir);
+    const conflict = events.filter(e => e.type === "resume_conflict");
+    const resumed = events.filter(e => e.type === "resumed");
+    expect(conflict).toHaveLength(1);
+    expect(resumed).toHaveLength(1);
+    expect(resumed[0].data.headMatch).toBe(false);
+    expect(resumed[0].data.preCompactState).toBe("PLAN");
+    expect(resumed[0].data.recoveryState).toBe("PLAN");
+    expect(resumed[0].data.ticketId).toBe("T-001");
+  });
+
+  it("Branch C: does NOT append 'resumed' event (failure path)", async () => {
+    const session = createCompactSession(root, { preCompactState: "PLAN" });
+    mockedGitHead.mockResolvedValue({ ok: false, error: "git not available" } as any);
+
+    await handleAutonomousGuide(root, {
+      action: "resume",
+      sessionId: session.sessionId,
+    });
+
+    const sessDir = join(sessionsDir, session.sessionId);
+    const { events } = readEvents(sessDir);
+    const resumed = events.filter(e => e.type === "resumed");
+    expect(resumed).toHaveLength(0);
+    const blocked = events.filter(e => e.type === "resume_blocked");
+    expect(blocked).toHaveLength(1);
   });
 });
