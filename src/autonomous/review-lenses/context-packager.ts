@@ -6,7 +6,8 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
+import { resolveAndValidate } from "./path-safety.js";
 import type { LensConfig, LensName, ReviewStage } from "./types.js";
 
 // ── Per-lens file routing ──────────────────────────────────────
@@ -55,16 +56,15 @@ export function packageContext(opts: {
     ? readFileSync(rulesPath, "utf-8").slice(0, 2000)
     : "(no RULES.md found)";
 
-  // Build file contents map
+  // Build file contents map (with path traversal + symlink protection)
   const fileContents = new Map<string, string>();
   for (const file of changedFiles) {
-    const fullPath = join(projectRoot, file);
-    if (existsSync(fullPath)) {
-      try {
-        fileContents.set(file, readFileSync(fullPath, "utf-8"));
-      } catch {
-        // Skip unreadable files
-      }
+    const safePath = resolveAndValidate(projectRoot, file);
+    if (!safePath) continue;
+    try {
+      fileContents.set(file, readFileSync(safePath, "utf-8"));
+    } catch {
+      // Skip unreadable files
     }
   }
 

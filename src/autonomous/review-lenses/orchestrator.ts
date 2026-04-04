@@ -48,7 +48,7 @@ export interface LensReviewOptions {
   readonly changedFiles: readonly string[];
   readonly ticketDescription: string;
   readonly projectRoot: string;
-  readonly sessionDir: string;
+  readonly sessionDir?: string;
   readonly config?: Partial<LensConfig>;
   readonly repoPolicy?: Partial<BlockingPolicy>;
   readonly knownFalsePositives?: string;
@@ -159,7 +159,7 @@ export function prepareLensReview(opts: LensReviewOptions): PreparedLensReview {
       ctx.projectRules,
       knownFP,
     );
-    const cached = getFromCache(opts.sessionDir, cacheKey);
+    const cached = opts.sessionDir ? getFromCache(opts.sessionDir, cacheKey) : null;
     if (cached) {
       cachedFindings.set(lens, cached);
       emit(lens, "complete", { findingCount: cached.length });
@@ -287,7 +287,10 @@ export function prepareLensReview(opts: LensReviewOptions): PreparedLensReview {
           ctx.projectRules,
           knownFP,
         );
-        writeToCache(opts.sessionDir, writeCacheKey, findings);
+        if (opts.sessionDir) {
+          try { writeToCache(opts.sessionDir, writeCacheKey, findings); }
+          catch { /* best-effort caching */ }
+        }
 
         allFindings.push(...findings);
         lensesCompleted.push(lens);
@@ -310,9 +313,9 @@ export function prepareLensReview(opts: LensReviewOptions): PreparedLensReview {
         });
       }
 
-      // Write progress to session state (pre-verdict snapshot)
-      const progressPath = join(opts.sessionDir, "review-progress.json");
-      mkdirSync(opts.sessionDir, { recursive: true });
+      // Write progress to session state (pre-verdict snapshot, skipped if no sessionDir)
+      const progressPath = opts.sessionDir ? join(opts.sessionDir, "review-progress.json") : null;
+      if (opts.sessionDir) mkdirSync(opts.sessionDir, { recursive: true });
       // Build lensDetails for Mac dashboard (per-lens metadata)
       const lensDetails = [
         ...lensMetadata.map((m) => ({
@@ -348,7 +351,7 @@ export function prepareLensReview(opts: LensReviewOptions): PreparedLensReview {
         verdictReason: null as string | null,
         isPartial: null as boolean | null,
       };
-      writeFileSync(progressPath, JSON.stringify(progressData, null, 2));
+      if (progressPath) try { writeFileSync(progressPath, JSON.stringify(progressData, null, 2)); } catch { /* best-effort */ }
 
       // Helper: write verdict back to progress file after judge completes
       const writeVerdictToProgress = (result: SynthesisResult) => {
@@ -356,7 +359,7 @@ export function prepareLensReview(opts: LensReviewOptions): PreparedLensReview {
         progressData.verdictReason = result.verdictReason;
         progressData.isPartial = result.isPartial;
         progressData.totalFindings = result.findings.length;
-        writeFileSync(progressPath, JSON.stringify(progressData, null, 2));
+        if (progressPath) try { writeFileSync(progressPath, JSON.stringify(progressData, null, 2)); } catch { /* best-effort */ }
       };
 
       // Build merger prompt
@@ -383,7 +386,7 @@ export function prepareLensReview(opts: LensReviewOptions): PreparedLensReview {
               judgePrompt,
               judgeModel: mergerModel,
               processJudgeResult(judgeRaw: string): SynthesisResult {
-                const requiredFailed = (CORE_LENSES as readonly string[]).some((l) => lensesFailed.includes(l));
+                const requiredFailed = (CORE_LENSES as readonly string[]).some((l) => lensesFailed.includes(l) || lensesInsufficientContext.includes(l));
                 const parsed = parseJudgeResult(judgeRaw) ?? buildFallbackResult(
                   allFindings, lensesCompleted, lensesInsufficientContext, lensesFailed, skippedLenses,
                 );
@@ -411,7 +414,7 @@ export function prepareLensReview(opts: LensReviewOptions): PreparedLensReview {
             judgePrompt,
             judgeModel: mergerModel,
             processJudgeResult(judgeRaw: string): SynthesisResult {
-              const requiredFailed = (CORE_LENSES as readonly string[]).some((l) => lensesFailed.includes(l));
+              const requiredFailed = (CORE_LENSES as readonly string[]).some((l) => lensesFailed.includes(l) || lensesInsufficientContext.includes(l));
               const parsed = parseJudgeResult(judgeRaw) ?? buildFallbackResult(
                 mergerResult.findings as LensFinding[],
                 lensesCompleted, lensesInsufficientContext, lensesFailed, skippedLenses,

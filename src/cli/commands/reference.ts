@@ -275,6 +275,9 @@ export const MCP_TOOLS: readonly McpToolEntry[] = [
   { name: "claudestory_lesson_update", description: "Update lesson", params: ["id", "title?", "content?", "context?", "tags?", "status?", "supersedes?"] },
   { name: "claudestory_lesson_reinforce", description: "Reinforce lesson — increment count and update lastValidated", params: ["id"] },
   { name: "claudestory_selftest", description: "Integration smoke test — create/update/delete cycle" },
+  { name: "claudestory_review_lenses_prepare", description: "Prepare multi-lens review — activation, secrets gate, context packaging, prompt building", params: ["stage", "diff", "changedFiles", "ticketDescription?", "reviewRound?", "priorDeferrals?"] },
+  { name: "claudestory_review_lenses_synthesize", description: "Synthesize lens results — schema validation, blocking policy, merger prompt generation", params: ["stage?", "lensResults", "activeLenses", "skippedLenses", "reviewRound?", "reviewId?"] },
+  { name: "claudestory_review_lenses_judge", description: "Prepare judge prompt — verdict calibration, convergence tracking", params: ["mergerResultRaw", "stage?", "lensesCompleted", "lensesFailed", "lensesInsufficientContext?", "lensesSkipped?", "convergenceHistory?"] },
 ];
 
 export function handleReference(format: OutputFormat): string {

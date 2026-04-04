@@ -44,9 +44,16 @@ describe("schema validator", () => {
     expect(result.invalid).toHaveLength(1);
   });
 
-  it("rejects invalid recommendedImpact", () => {
+  it("normalizes unknown recommendedImpact to non-blocking", () => {
     const result = validateFindings([{ ...validFinding, recommendedImpact: "maybe" }], "security");
-    expect(result.invalid).toHaveLength(1);
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].recommendedImpact).toBe("non-blocking");
+  });
+
+  it("normalizes 'important' recommendedImpact to needs-revision", () => {
+    const result = validateFindings([{ ...validFinding, recommendedImpact: "important" }], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].recommendedImpact).toBe("needs-revision");
   });
 
   it("rejects missing description", () => {
@@ -59,16 +66,34 @@ describe("schema validator", () => {
     expect(result.invalid).toHaveLength(1);
   });
 
-  it("rejects lens name mismatch", () => {
+  it("accepts lens name mismatch (lenient -- agents sometimes get this wrong)", () => {
     const result = validateFindings([{ ...validFinding, lens: "clean-code" }], "security");
-    expect(result.invalid).toHaveLength(1);
-    expect(result.invalid[0].reason).toContain("mismatch");
+    expect(result.valid).toHaveLength(1);
+    expect(result.invalid).toHaveLength(0);
   });
 
-  it("rejects missing requiresMoreContext", () => {
+  it("defaults missing requiresMoreContext to false (lenient)", () => {
     const { requiresMoreContext: _, ...noField } = validFinding;
     const result = validateFindings([noField], "security");
-    expect(result.invalid).toHaveLength(1);
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].requiresMoreContext).toBe(false);
+  });
+
+  it("maps title to description when description missing", () => {
+    const { description: _, ...noDesc } = validFinding;
+    const withTitle = { ...noDesc, title: "SQL injection in user endpoint" };
+    const result = validateFindings([withTitle], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].description).toBe("SQL injection in user endpoint");
+  });
+
+  it("maps location to file when file missing", () => {
+    const { file: _, line: __, ...noFile } = validFinding;
+    const withLocation = { ...noFile, location: "src/api/users.ts:87" };
+    const result = validateFindings([withLocation], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].file).toBe("src/api/users.ts");
+    expect(result.valid[0].line).toBe(87);
   });
 
   it("handles mixed valid and invalid", () => {
@@ -78,5 +103,66 @@ describe("schema validator", () => {
     );
     expect(result.valid).toHaveLength(2);
     expect(result.invalid).toHaveLength(1);
+  });
+
+  // normalizeFields edge cases
+  it("maps location without colon as file path (no line number)", () => {
+    const { file: _, line: __, ...noFile } = validFinding;
+    const withLocation = { ...noFile, location: "src/utils/helpers.ts" };
+    const result = validateFindings([withLocation], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].file).toBe("src/utils/helpers.ts");
+    expect(result.valid[0].line).toBeFalsy(); // undefined or null, both acceptable
+  });
+
+  it("handles location with non-numeric line suffix", () => {
+    const { file: _, line: __, ...noFile } = validFinding;
+    const withLocation = { ...noFile, location: "src/api.ts:abc" };
+    const result = validateFindings([withLocation], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].file).toBe("src/api.ts");
+    // NaN line number should not be set
+  });
+
+  it("preserves description when both title and description exist", () => {
+    const withBoth = { ...validFinding, title: "Short title" };
+    const result = validateFindings([withBoth], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].description).toBe("SQL injection found"); // original, not title
+  });
+
+  it("preserves file when both file and location exist", () => {
+    const withBoth = { ...validFinding, location: "other/path.ts:99" };
+    const result = validateFindings([withBoth], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].file).toBe("src/api.ts"); // original, not location
+  });
+
+  it("defaults all optional fields when missing", () => {
+    const minimal = {
+      lens: "security",
+      severity: "major",
+      category: "injection",
+      description: "Found a bug",
+      confidence: 0.8,
+      file: null,
+      line: null,
+      evidence: null,
+      suggestedFix: null,
+    };
+    const result = validateFindings([minimal], "security");
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].lensVersion).toBe("unknown");
+    expect(result.valid[0].requiresMoreContext).toBe(false);
+    expect(result.valid[0].assumptions).toBeNull();
+    expect(result.valid[0].recommendedImpact).toBe("non-blocking");
+  });
+
+  it("handles empty location string", () => {
+    const { file: _, line: __, ...noFile } = validFinding;
+    const withEmpty = { ...noFile, location: "" };
+    const result = validateFindings([withEmpty], "security");
+    // Empty location should not map to file
+    expect(result.valid).toHaveLength(1);
   });
 });

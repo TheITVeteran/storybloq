@@ -6,6 +6,7 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
+import { resolveAndValidate } from "./path-safety.js";
 import type { LensFinding } from "./types.js";
 
 export interface SecretsGateResult {
@@ -39,6 +40,9 @@ export function runSecretsGate(
   let secretsFound = false;
 
   for (const file of changedFiles) {
+    // Path traversal + symlink protection
+    if (!resolveAndValidate(projectRoot, file)) continue;
+
     try {
       const output = execFileSync(
         binaryPath!,

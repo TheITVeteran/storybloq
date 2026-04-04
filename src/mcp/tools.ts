@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { TARGET_WORK_ID_REGEX } from "../autonomous/session-types.js";
+import { handlePrepare, handleSynthesize, handleJudge } from "../autonomous/review-lenses/mcp-handlers.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { loadProject } from "../core/project-loader.js";
@@ -733,4 +734,95 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
       }).optional().describe("Report data (required for report action)"),
     },
   }, (args) => handleAutonomousGuide(pinnedRoot, args as Parameters<typeof handleAutonomousGuide>[1]));
+
+  // ── T-189: Multi-lens review MCP tools ─────────────────────
+
+  server.registerTool("claudestory_review_lenses_prepare", {
+    description: "Prepare a multi-lens code/plan review. Returns lens prompts for the agent to spawn as parallel subagents. Handles activation, secrets gate, context packaging, and caching.",
+    inputSchema: {
+      stage: z.enum(["CODE_REVIEW", "PLAN_REVIEW"]).describe("Review stage"),
+      diff: z.string().describe("The diff (code review) or plan text (plan review) to review"),
+      changedFiles: z.array(z.string()).describe("List of changed file paths"),
+      ticketDescription: z.string().optional().describe("Current ticket description for context"),
+      reviewRound: z.number().int().min(1).optional().describe("Review round (1 = first, 2+ = subsequent)"),
+      priorDeferrals: z.array(z.string()).optional().describe("issueKeys of findings the agent intentionally deferred from prior rounds"),
+    },
+  }, (args) => {
+    try {
+      const result = handlePrepare({ ...args, projectRoot: pinnedRoot });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.replace(/\/[^\s]+/g, "<path>") : "unknown error";
+      return { content: [{ type: "text" as const, text: `Error preparing lens review: ${msg}` }], isError: true };
+    }
+  });
+
+  server.registerTool("claudestory_review_lenses_synthesize", {
+    description: "Synthesize lens results after parallel review. Validates findings, applies blocking policy, generates merger prompt. Call after collecting all lens subagent results.",
+    inputSchema: {
+      stage: z.enum(["CODE_REVIEW", "PLAN_REVIEW"]).optional().describe("Review stage (defaults to CODE_REVIEW)"),
+      lensResults: z.array(z.object({
+        lens: z.string(),
+        status: z.string(),
+        findings: z.array(z.any()),
+      })).describe("Results from each lens subagent"),
+      activeLenses: z.array(z.string()).describe("Active lens names from prepare step"),
+      skippedLenses: z.array(z.string()).describe("Skipped lens names from prepare step"),
+      reviewRound: z.number().int().min(1).optional().describe("Current review round"),
+      reviewId: z.string().optional().describe("Review ID from prepare step"),
+    },
+  }, (args) => {
+    try {
+      const result = handleSynthesize({
+        stage: args.stage,
+        lensResults: args.lensResults,
+        metadata: {
+          activeLenses: args.activeLenses,
+          skippedLenses: args.skippedLenses,
+          reviewRound: args.reviewRound ?? 1,
+          reviewId: args.reviewId ?? "unknown",
+        },
+        projectRoot: pinnedRoot,
+      });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.replace(/\/[^\s]+/g, "<path>") : "unknown error";
+      return { content: [{ type: "text" as const, text: `Error synthesizing lens results: ${msg}` }], isError: true };
+    }
+  });
+
+  server.registerTool("claudestory_review_lenses_judge", {
+    description: "Prepare the judge prompt for final verdict after merger. Applies verdict calibration rules and convergence tracking. Call after running the merger agent.",
+    inputSchema: {
+      mergerResultRaw: z.string().describe("Raw JSON string output from the merger agent"),
+      stage: z.enum(["CODE_REVIEW", "PLAN_REVIEW"]).optional().describe("Review stage (defaults to CODE_REVIEW)"),
+      lensesCompleted: z.array(z.string()).describe("Lenses that completed successfully"),
+      lensesFailed: z.array(z.string()).describe("Lenses that failed or timed out"),
+      lensesInsufficientContext: z.array(z.string()).optional().describe("Lenses that returned insufficient-context"),
+      lensesSkipped: z.array(z.string()).optional().describe("Lenses not activated for this review"),
+      convergenceHistory: z.array(z.object({
+        round: z.number(),
+        verdict: z.string(),
+        blocking: z.number(),
+        important: z.number(),
+        newCode: z.string(),
+      })).optional().describe("Prior round verdicts for convergence tracking"),
+    },
+  }, (args) => {
+    try {
+      const result = handleJudge({
+        mergerResultRaw: args.mergerResultRaw,
+        stage: args.stage,
+        lensesCompleted: args.lensesCompleted,
+        lensesFailed: args.lensesFailed,
+        lensesInsufficientContext: args.lensesInsufficientContext ?? [],
+        lensesSkipped: args.lensesSkipped ?? [],
+        convergenceHistory: args.convergenceHistory,
+      });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.replace(/\/[^\s]+/g, "<path>") : "unknown error";
+      return { content: [{ type: "text" as const, text: `Error preparing judge: ${msg}` }], isError: true };
+    }
+  });
 }
