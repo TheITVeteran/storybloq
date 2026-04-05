@@ -17,7 +17,7 @@ export class PlanReviewStage implements WorkflowStage {
     const backends = ctx.state.config.reviewBackends;
     const existingReviews = ctx.state.reviews.plan;
     const roundNum = existingReviews.length + 1;
-    const reviewer = nextReviewer(existingReviews, backends);
+    const reviewer = nextReviewer(existingReviews, backends, ctx.state.codexUnavailable);
     const risk = ctx.state.ticket?.risk ?? "low";
     const minRounds = requiredRounds(risk as "low" | "medium" | "high");
 
@@ -63,7 +63,10 @@ export class PlanReviewStage implements WorkflowStage {
         `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "plan_review_round", "verdict": "<approve|revise|request_changes|reject>", "findings": [...] } }`,
         '```',
       ].join("\n"),
-      reminders: ["Report the exact verdict and findings from the reviewer."],
+      reminders: [
+        "Report the exact verdict and findings from the reviewer.",
+        ...(reviewer === "codex" ? ["If codex is unavailable (usage limit, error, etc.), fall back to agent review and include 'codex unavailable' in your report notes."] : []),
+      ],
       transitionedFrom: ctx.state.previousState ?? undefined,
     };
   }
@@ -79,7 +82,7 @@ export class PlanReviewStage implements WorkflowStage {
     const roundNum = planReviews.length + 1;
     const findings = report.findings ?? [];
     const backends = ctx.state.config.reviewBackends;
-    const reviewerBackend = nextReviewer(planReviews, backends);
+    const reviewerBackend = nextReviewer(planReviews, backends, ctx.state.codexUnavailable);
     planReviews.push({
       round: roundNum,
       reviewer: reviewerBackend,
@@ -91,6 +94,11 @@ export class PlanReviewStage implements WorkflowStage {
       codexSessionId: report.reviewerSessionId,
       timestamp: new Date().toISOString(),
     });
+
+    // ISS-098: Detect codex unavailability from agent notes
+    if (!ctx.state.codexUnavailable && report.notes && /codex\b.*\b(unavail|limit|failed|down|error|usage)/i.test(report.notes)) {
+      ctx.writeState({ codexUnavailable: true });
+    }
 
     const risk = ctx.state.ticket?.risk ?? "low";
     const minRounds = requiredRounds(risk as "low" | "medium" | "high");
@@ -205,7 +213,7 @@ export class PlanReviewStage implements WorkflowStage {
     }
 
     // Stay in PLAN_REVIEW — next round
-    const nextReviewerName = nextReviewer(planReviews, backends);
+    const nextReviewerName = nextReviewer(planReviews, backends, ctx.state.codexUnavailable);
     return {
       action: "retry",
       instruction: [

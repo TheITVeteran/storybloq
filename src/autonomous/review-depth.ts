@@ -62,18 +62,24 @@ export function requiredRounds(risk: RiskLevel): number {
 
 /**
  * Select the next reviewer backend, alternating for mixed-reviewer requirement.
+ * ISS-098: When codexUnavailable is true, filter "codex" from backends to avoid
+ * wasting ~30s per round discovering it's down.
  */
 export function nextReviewer(
   previousRounds: readonly ReviewRecord[],
   backends: readonly string[],
+  codexUnavailable?: boolean,
 ): string {
-  if (backends.length === 0) return "agent";
-  if (backends.length === 1) return backends[0]!;
+  const effective = codexUnavailable
+    ? backends.filter((b) => b !== "codex")
+    : backends;
+  if (effective.length === 0) return "agent";
+  if (effective.length === 1) return effective[0]!;
 
-  // Alternate: if last round used backends[0], use backends[1], and vice versa
-  if (previousRounds.length === 0) return backends[0]!;
+  // Alternate: if last round used effective[0], use effective[1], and vice versa
+  if (previousRounds.length === 0) return effective[0]!;
   const lastReviewer = previousRounds[previousRounds.length - 1]!.reviewer;
-  const lastIndex = backends.indexOf(lastReviewer);
-  if (lastIndex === -1) return backends[0]!;
-  return backends[(lastIndex + 1) % backends.length]!;
+  const lastIndex = effective.indexOf(lastReviewer);
+  if (lastIndex === -1) return effective[0]!;
+  return effective[(lastIndex + 1) % effective.length]!;
 }

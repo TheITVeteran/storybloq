@@ -388,6 +388,9 @@ export const SessionStateSchema = z.object({
   startedAt: z.string(),
   guideCallCount: z.number().default(0),
 
+  // ISS-098: Codex availability cache -- skip codex for rest of session after first failure
+  codexUnavailable: z.boolean().optional(),
+
   // Supersession tracking
   supersededBy: z.string().optional(),
   supersededSession: z.string().optional(),

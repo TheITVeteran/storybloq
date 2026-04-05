@@ -21,7 +21,7 @@ export class CodeReviewStage implements WorkflowStage {
     const backends = ctx.state.config.reviewBackends;
     const codeReviews = ctx.state.reviews.code;
     const roundNum = codeReviews.length + 1;
-    const reviewer = nextReviewer(codeReviews, backends);
+    const reviewer = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable);
     const risk = ctx.state.ticket?.realizedRisk ?? ctx.state.ticket?.risk ?? "low";
     const rounds = requiredRounds(risk as "low" | "medium" | "high");
     const mergeBase = ctx.state.git.mergeBase;
@@ -76,6 +76,7 @@ export class CodeReviewStage implements WorkflowStage {
         diffReminder,
         "Do NOT compress or summarize the diff.",
         "If the reviewer flags pre-existing issues unrelated to your changes, file them as issues using claudestory_issue_create with severity and impact. Do not fix them in this ticket.",
+        ...(reviewer === "codex" ? ["If codex is unavailable (usage limit, error, etc.), fall back to agent review and include 'codex unavailable' in your report notes."] : []),
       ],
       transitionedFrom: ctx.state.previousState ?? undefined,
     };
@@ -91,7 +92,7 @@ export class CodeReviewStage implements WorkflowStage {
     const roundNum = codeReviews.length + 1;
     const findings = report.findings ?? [];
     const backends = ctx.state.config.reviewBackends;
-    const reviewerBackend = nextReviewer(codeReviews, backends);
+    const reviewerBackend = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable);
     codeReviews.push({
       round: roundNum,
       reviewer: reviewerBackend,
@@ -103,6 +104,11 @@ export class CodeReviewStage implements WorkflowStage {
       codexSessionId: report.reviewerSessionId,
       timestamp: new Date().toISOString(),
     });
+
+    // ISS-098: Detect codex unavailability from agent notes
+    if (!ctx.state.codexUnavailable && report.notes && /codex\b.*\b(unavail|limit|failed|down|error|usage)/i.test(report.notes)) {
+      ctx.writeState({ codexUnavailable: true });
+    }
 
     const risk = ctx.state.ticket?.realizedRisk ?? ctx.state.ticket?.risk ?? "low";
     const minRounds = requiredRounds(risk as "low" | "medium" | "high");
@@ -213,7 +219,7 @@ export class CodeReviewStage implements WorkflowStage {
     }
 
     // Stay in CODE_REVIEW
-    const nextReviewerName = nextReviewer(codeReviews, backends);
+    const nextReviewerName = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable);
     const mergeBase = ctx.state.git.mergeBase;
     return {
       action: "retry",
