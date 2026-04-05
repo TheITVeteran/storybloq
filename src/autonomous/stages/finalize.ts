@@ -64,6 +64,7 @@ export class FinalizeStage implements WorkflowStage {
       }
     }
 
+    // ISS-099: Single combined instruction -- stage, verify, commit in one round-trip
     return {
       instruction: [
         "# Finalize",
@@ -72,8 +73,8 @@ export class FinalizeStage implements WorkflowStage {
         "",
         "1. Run `git reset` to clear the staging area (ensures no stale files from prior operations)",
         ctx.state.ticket ? `2. Update ticket ${ctx.state.ticket.id} status to "complete" in .story/` : "",
-        ctx.state.currentIssue ? `2. Ensure issue ${ctx.state.currentIssue.id} status is "resolved" in .story/issues/` : "",
-        "3. Stage only the files you created or modified for this work (code + .story/ changes). Do NOT use `git add -A` or `git add .`",
+        ctx.state.currentIssue ? `2. Ensure .story/issues/${ctx.state.currentIssue.id}.json is updated with status: "resolved"` : "",
+        "3. Stage only the files you modified for this fix (code + .story/ changes). Do NOT use `git add -A` or `git add .`",
         "4. Call me with completedAction: \"files_staged\"",
       ].filter(Boolean).join("\n"),
       reminders: [
@@ -99,13 +100,18 @@ export class FinalizeStage implements WorkflowStage {
       return this.handleStage(ctx, report);
     }
 
-    // --- Checkpoint: precommit ---
+    // --- Checkpoint: precommit (kept for backward compatibility) ---
     if (action === "precommit_passed") {
       return this.handlePrecommit(ctx);
     }
 
     // --- Checkpoint: commit ---
+    // ISS-099: Accept commit_done from any checkpoint, including null.
+    // When the agent stages and commits in one go, there's no intermediate checkpoint.
     if (action === "commit_done") {
+      if (!checkpoint) {
+        ctx.writeState({ finalizeCheckpoint: "precommit_passed" });
+      }
       return this.handleCommit(ctx, report);
     }
 
@@ -119,18 +125,20 @@ export class FinalizeStage implements WorkflowStage {
     const checkpoint = ctx.state.finalizeCheckpoint;
 
     // ISS-063: If already staged (override or not), skip overlap and return
-    // the pre-commit instruction idempotently. Prevents infinite loop when
+    // the commit instruction idempotently. Prevents infinite loop when
     // agent re-reports files_staged after a successful override.
     if (checkpoint === "staged" || checkpoint === "staged_override") {
       return {
         action: "retry",
         instruction: [
-          "Files staged. Now run pre-commit checks.",
+          "Files staged. Now commit.",
           "",
-          'Run any pre-commit hooks or linting, then call me with completedAction: "precommit_passed".',
-          'If pre-commit fails, fix the issues, re-stage, and call me with completedAction: "files_staged" again.',
+          ctx.state.ticket
+            ? `Commit with message: "feat: <description> (${ctx.state.ticket.id})"`
+            : "Commit with a descriptive message.",
+          "",
+          'Call me with completedAction: "commit_done" and include the commitHash.',
         ].join("\n"),
-        reminders: ["Verify staged set is intact after pre-commit hooks."],
       };
     }
 
@@ -219,19 +227,22 @@ export class FinalizeStage implements WorkflowStage {
       }
     }
 
+    // ISS-099: Skip precommit round-trip -- go straight to commit instruction
     ctx.writeState({
-      finalizeCheckpoint: overlapOverridden ? "staged_override" : "staged",
+      finalizeCheckpoint: "precommit_passed",
     });
 
     return {
       action: "retry",
       instruction: [
-        "Files staged. Now run pre-commit checks.",
+        "Files staged. Now commit.",
         "",
-        'Run any pre-commit hooks or linting, then call me with completedAction: "precommit_passed".',
-        'If pre-commit fails, fix the issues, re-stage, and call me with completedAction: "files_staged" again.',
+        ctx.state.ticket
+          ? `Commit with message: "feat: <description> (${ctx.state.ticket.id})"`
+          : "Commit with a descriptive message.",
+        "",
+        'Call me with completedAction: "commit_done" and include the commitHash.',
       ].join("\n"),
-      reminders: ["Verify staged set is intact after pre-commit hooks."],
     };
   }
 
