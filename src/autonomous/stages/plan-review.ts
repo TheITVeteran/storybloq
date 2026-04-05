@@ -44,6 +44,7 @@ export class PlanReviewStage implements WorkflowStage {
         reminders: [
           "Report the exact verdict and findings from the synthesizer.",
           "Lens subagents run in parallel with read-only tools (Read, Grep, Glob).",
+          "IMPORTANT: After the review, file ANY pre-existing issues discovered using claudestory_issue_create with severity and impact. Do NOT skip this step.",
         ],
         transitionedFrom: ctx.state.previousState ?? undefined,
       };
@@ -66,6 +67,7 @@ export class PlanReviewStage implements WorkflowStage {
       ].join("\n"),
       reminders: [
         "Report the exact verdict and findings from the reviewer.",
+        "IMPORTANT: After the review, file ANY pre-existing issues discovered using claudestory_issue_create with severity and impact. Do NOT skip this step.",
         ...(reviewer === "codex" ? ["If codex is unavailable (usage limit, error, etc.), fall back to agent review and include 'codex unavailable' in your report notes."] : []),
       ],
       transitionedFrom: ctx.state.previousState ?? undefined,

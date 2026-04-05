@@ -56,7 +56,7 @@ export class CodeReviewStage implements WorkflowStage {
           diffReminder,
           "Do NOT compress or summarize the diff.",
           "Lens subagents run in parallel with read-only tools (Read, Grep, Glob).",
-          "If the reviewer flags pre-existing issues unrelated to your changes, file them as issues using claudestory_issue_create with severity and impact. Do not fix them in this ticket.",
+          "IMPORTANT: After the review, file ANY pre-existing issues discovered (bugs in surrounding code, missing guards, etc.) using claudestory_issue_create with severity and impact. Do NOT skip this step. Do NOT fix them in this ticket.",
         ],
         transitionedFrom: ctx.state.previousState ?? undefined,
       };
