@@ -206,12 +206,33 @@ async function recoverPendingMutation(
   const mutation = state.pendingProjectMutation;
   if (!mutation || typeof mutation !== "object") return state;
   const m = mutation as Record<string, unknown>;
-  // ISS-090: Support issue_update recovery (reset stuck inprogress → open)
+  // ISS-090 + ISS-112: issue_update recovery with 3-way check (matches ticket_update pattern)
   if (m.type === "issue_update") {
+    const targetId = m.target as string;
+    const targetValue = m.value as string;
+    const expectedCurrent = m.expectedCurrent as string | undefined;
     try {
-      const { handleIssueUpdate } = await import("../cli/commands/issue.js");
-      await handleIssueUpdate(m.target as string, { status: m.value as string }, "json", root);
-    } catch { /* best-effort */ }
+      const { loadProject } = await import("../core/project-loader.js");
+      const { state: projectState } = await loadProject(root);
+      const issue = projectState.issues.find(i => i.id === targetId);
+      if (issue) {
+        if (issue.status === targetValue) {
+          // Already applied -- clear marker
+        } else if (expectedCurrent && issue.status === expectedCurrent) {
+          // Safe to replay
+          const { handleIssueUpdate } = await import("../cli/commands/issue.js");
+          await handleIssueUpdate(targetId, { status: targetValue }, "json", root);
+        } else {
+          // Conflict: issue in unexpected state (e.g., manually resolved) -- do not revert
+          appendEvent(dir, {
+            rev: state.revision,
+            type: "mutation_conflict",
+            timestamp: new Date().toISOString(),
+            data: { targetId, expected: expectedCurrent, actual: issue.status, transitionId: m.transitionId },
+          });
+        }
+      }
+    } catch { /* best-effort -- leave marker cleared regardless */ }
     const cleared = { ...state, pendingProjectMutation: null };
     return writeSessionSync(dir, cleared);
   }

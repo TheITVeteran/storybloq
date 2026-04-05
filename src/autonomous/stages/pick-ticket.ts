@@ -234,9 +234,10 @@ export class PickTicketStage implements WorkflowStage {
     }
 
     // ISS-090: Mark issue as inprogress with pendingProjectMutation for crash recovery
+    // ISS-112: Include expectedCurrent for 3-way recovery check (matches ticket_update pattern)
     const transitionId = `issue-pick-${issueId}-${Date.now()}`;
     ctx.writeState({
-      pendingProjectMutation: { type: "issue_update", target: issueId, field: "status", value: "inprogress", transitionId },
+      pendingProjectMutation: { type: "issue_update", target: issueId, field: "status", value: "inprogress", expectedCurrent: issue.status, transitionId },
     });
     try {
       const { handleIssueUpdate } = await import("../../cli/commands/issue.js");
