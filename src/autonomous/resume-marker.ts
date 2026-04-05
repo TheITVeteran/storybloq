@@ -14,6 +14,11 @@ import { join } from "node:path";
 
 const MARKER_FILENAME = "autonomous-resume.md";
 
+/** Strip newlines, collapse whitespace, and limit length to prevent prompt injection via .claude/rules/ marker. */
+function sanitize(input: string, maxLen = 120): string {
+  return input.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLen);
+}
+
 export function writeResumeMarker(root: string, sessionId: string, state: {
   ticket?: { id: string; title: string } | null;
   completedTickets: { id: string }[];
@@ -25,7 +30,7 @@ export function writeResumeMarker(root: string, sessionId: string, state: {
     mkdirSync(rulesDir, { recursive: true });
 
     const ticketInfo = state.ticket
-      ? `Working on: ${state.ticket.id} (${state.ticket.title})`
+      ? `Working on: ${sanitize(state.ticket.id, 20)} (${sanitize(state.ticket.title)})`
       : "Between tickets";
     const progress = `Progress: ${state.completedTickets.length} tickets completed, ${(state.resolvedIssues ?? []).length} issues resolved`;
 
