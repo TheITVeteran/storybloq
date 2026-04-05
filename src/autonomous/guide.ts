@@ -206,7 +206,17 @@ async function recoverPendingMutation(
   const mutation = state.pendingProjectMutation;
   if (!mutation || typeof mutation !== "object") return state;
   const m = mutation as Record<string, unknown>;
-  if (m.type !== "ticket_update") return state; // only ticket_update supported in wave 3
+  // ISS-090: Support issue_update recovery (reset stuck inprogress → open)
+  if (m.type === "issue_update") {
+    try {
+      const { handleIssueUpdate } = await import("../cli/commands/issue.js");
+      await handleIssueUpdate(m.target as string, { status: m.value as string }, "json", root);
+    } catch { /* best-effort */ }
+    const cleared = { ...state, pendingProjectMutation: null };
+    return writeSessionSync(dir, cleared);
+  }
+
+  if (m.type !== "ticket_update") return state;
 
   const targetId = m.target as string;
   const targetValue = m.value as string;

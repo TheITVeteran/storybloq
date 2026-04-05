@@ -233,11 +233,16 @@ export class PickTicketStage implements WorkflowStage {
       return { action: "retry", instruction: `Issue ${issueId} is ${issue.status}. Pick an open issue.` };
     }
 
-    // Mark issue as inprogress in .story/
+    // ISS-090: Mark issue as inprogress with pendingProjectMutation for crash recovery
+    const transitionId = `issue-pick-${issueId}-${Date.now()}`;
+    ctx.writeState({
+      pendingProjectMutation: { type: "issue_update", target: issueId, field: "status", value: "inprogress", transitionId },
+    });
     try {
       const { handleIssueUpdate } = await import("../../cli/commands/issue.js");
       await handleIssueUpdate(issueId, { status: "inprogress" }, "json", ctx.root);
     } catch { /* best-effort -- don't block on status update */ }
+    ctx.writeState({ pendingProjectMutation: null });
 
     ctx.updateDraft({
       currentIssue: { id: issue.id, title: issue.title, severity: issue.severity },

@@ -231,6 +231,7 @@ export type PendingProjectMutation =
   | { type: "ticket_recovery_clear"; target: string; transitionId: string }
   | { type: "handover_create"; filename: string | null; transitionId: string }
   | { type: "issue_create"; expectedId: string; transitionId: string }
+  | { type: "issue_update"; target: string; field: string; value: string; transitionId: string }
   | { type: "snapshot_save"; filename: string | null; transitionId: string };
 
 // ---------------------------------------------------------------------------
