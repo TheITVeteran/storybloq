@@ -218,7 +218,7 @@ export class PickTicketStage implements WorkflowStage {
     // Mark issue as inprogress in .story/
     try {
       const { handleIssueUpdate } = await import("../../cli/commands/issue.js");
-      await handleIssueUpdate({ id: issueId, status: "inprogress" }, "json", ctx.root);
+      await handleIssueUpdate(issueId, { status: "inprogress" }, "json", ctx.root);
     } catch { /* best-effort -- don't block on status update */ }
 
     ctx.updateDraft({
