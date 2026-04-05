@@ -775,7 +775,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
       // T-192: Origin classification inputs
       diff: z.string().optional().describe("The diff being reviewed (for origin classification of findings into introduced vs pre-existing)"),
       changedFiles: z.array(z.string()).optional().describe("Changed file paths from prepare step (for origin classification)"),
-      sessionId: z.string().optional().describe("Active session ID (for dedup of auto-filed pre-existing issues across review rounds)"),
+      sessionId: z.string().uuid().optional().describe("Active session ID (for dedup of auto-filed pre-existing issues across review rounds)"),
     },
   }, async (args) => {
     try {
