@@ -79,30 +79,14 @@ describe("orchestrator integration", () => {
     expect(prepared.cachedFindings.size).toBe(0);
   });
 
-  it("cache hit short-circuits prompt generation for that lens", () => {
+  it("cache hit short-circuits prompt generation for that lens", async () => {
     const lens = "security";
-    const version = getLensVersion(lens);
-    // Pre-populate cache for security lens
-    const artifact = prepareLensReview(makeOpts()).subagentPrompts.get(lens);
-    expect(artifact).toBeDefined();
 
-    // Build the same cache key the orchestrator will use
-    // We need to run prepareLensReview once to see what keys it generates,
-    // then seed the cache. Easiest: write a finding to cache with matching key.
-    // Instead, use the orchestrator's own key construction by pre-building.
-    const opts = makeOpts();
-    const prep1 = prepareLensReview(opts);
-    // prep1 has no cache hits. Now build the key and seed cache.
-    // The key uses the per-lens artifact from context-packager, which we can't
-    // easily reproduce externally. Use the workaround: run once, write cache, run again.
-    // Actually the cache is keyed in processResults -- let's test the processResults path instead.
+    // Run 1: prepare + processResults to populate the cache
+    const prep1 = prepareLensReview(makeOpts());
+    expect(prep1.subagentPrompts.has(lens)).toBe(true);
+    expect(prep1.cachedFindings.size).toBe(0);
 
-    // Simpler: verify cachedFindings is populated when cache has entries
-    // by writing to cache before second call. The cache key formula is deterministic
-    // and includes lens+version+stage+artifact+desc+rules+fps.
-    // Since we can't reconstruct the exact artifact, test via two sequential runs.
-
-    // Run processResults on first prep to populate cache
     const results = new Map<string, LensResult | null>();
     for (const l of prep1.activeLenses) {
       if (l === lens) {
@@ -111,8 +95,19 @@ describe("orchestrator integration", () => {
         results.set(l, { status: "complete", findings: [] });
       }
     }
-    // This should write to cache via processResults
-    // processResults is async
+    await prep1.processResults(results);
+
+    // Run 2: same inputs -- security lens should be a cache hit
+    const prep2 = prepareLensReview(makeOpts());
+    expect(prep2.cachedFindings.has(lens)).toBe(true);
+    expect(prep2.cachedFindings.get(lens)!.length).toBe(1);
+    expect(prep2.cachedFindings.get(lens)![0].description).toBe(`Finding from ${lens}`);
+    // Cache-hit lens should NOT generate a prompt
+    expect(prep2.subagentPrompts.has(lens)).toBe(false);
+    // All lenses were cached (all had results in processResults), so no prompts generated
+    expect(prep2.subagentPrompts.size).toBe(0);
+    // Total cached should equal all active lenses
+    expect(prep2.cachedFindings.size).toBe(prep2.activeLenses.length);
   });
 
   it("processResults handles mixed complete/insufficient-context/null results", async () => {
