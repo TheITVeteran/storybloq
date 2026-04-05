@@ -175,7 +175,7 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
   try {
     await server.server.sendNotification({
       method: "notifications/claude/channel" as any,
-      params: { channel: "claudestory", content, meta },
+      params: { content, meta },
     });
     process.stderr.write(`claudestory: sent channel event ${event.event}\n`);
   } catch (err: unknown) {

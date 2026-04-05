@@ -101,13 +101,19 @@ function registerDegradedTools(server: McpServer): void {
       degradedStatus.remove();
       degradedInit.remove();
       registerAllTools(server, result.root);
-      await startInboxWatcher(result.root, server);
     } catch (swapErr: unknown) {
       process.stderr.write(`claudestory: tool-swap failed after init: ${swapErr instanceof Error ? swapErr.message : String(swapErr)}\n`);
       // Re-register degraded tools so the server isn't completely toolless.
       // The project was created — user can restart for full access.
       try { registerDegradedTools(server); } catch { /* best effort */ }
       return { content: [{ type: "text" as const, text: `Initialized .story/ project "${args.name}" at ${result.root}\n\nWarning: tool registration failed. Restart the MCP server for full tool access.` }] };
+    }
+
+    // Start inbox watcher separately -- failure here should not roll back tools.
+    try {
+      await startInboxWatcher(result.root, server);
+    } catch (watchErr: unknown) {
+      process.stderr.write(`claudestory: inbox watcher failed after init: ${watchErr instanceof Error ? watchErr.message : String(watchErr)}\n`);
     }
 
     process.stderr.write(`claudestory: initialized at ${result.root}\n`);
