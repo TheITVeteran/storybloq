@@ -40,7 +40,8 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
