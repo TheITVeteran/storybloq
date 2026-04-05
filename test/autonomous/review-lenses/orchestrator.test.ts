@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { prepareLensReview } from "../../../src/autonomous/review-lenses/orchestrator.js";
+import { handleSynthesize } from "../../../src/autonomous/review-lenses/mcp-handlers.js";
 import type { LensResult } from "../../../src/autonomous/review-lenses/types.js";
 import { writeToCache, buildCacheKey } from "../../../src/autonomous/review-lenses/cache.js";
 import { getLensVersion } from "../../../src/autonomous/review-lenses/lenses/index.js";
@@ -320,5 +321,142 @@ describe("redactArtifactSecrets", () => {
     const prepared = prepareLensReview(makeOpts({ requireSecretsGate: false }));
     expect(prepared.secretsGateActive).toBe(false);
     expect(prepared.secretsMetaFinding).toBeNull();
+  });
+});
+
+describe("handleSynthesize origin classification (T-192)", () => {
+  function makeSynthesizeFinding(lens: string, file: string | null, line: number | null, overrides: Record<string, unknown> = {}) {
+    return {
+      lens,
+      lensVersion: `${lens}-v1`,
+      severity: "major" as const,
+      recommendedImpact: "needs-revision" as const,
+      category: "test-category",
+      description: `Finding from ${lens} in ${file ?? "unknown"}`,
+      file,
+      line,
+      evidence: "test evidence",
+      suggestedFix: "test fix",
+      confidence: 0.9,
+      assumptions: null,
+      requiresMoreContext: false,
+      ...overrides,
+    };
+  }
+
+  it("classifies findings in added lines as introduced", () => {
+    const result = handleSynthesize({
+      stage: "CODE_REVIEW",
+      diff: DIFF,
+      changedFiles: CHANGED_FILES,
+      lensResults: [{
+        lens: "security",
+        status: "complete",
+        findings: [makeSynthesizeFinding("security", "src/api.ts", 4)], // line 4 is an added line
+      }],
+      metadata: { activeLenses: ["security"], skippedLenses: [], reviewRound: 1, reviewId: "test" },
+      projectRoot,
+    });
+
+    expect(result.validatedFindings.length).toBe(1);
+    expect(result.validatedFindings[0].origin).toBe("introduced");
+    expect(result.preExistingCount).toBe(0);
+    expect(result.preExistingFindings.length).toBe(0);
+  });
+
+  it("classifies findings in context lines as pre-existing", () => {
+    const result = handleSynthesize({
+      stage: "CODE_REVIEW",
+      diff: DIFF,
+      changedFiles: CHANGED_FILES,
+      lensResults: [{
+        lens: "security",
+        status: "complete",
+        findings: [makeSynthesizeFinding("security", "src/api.ts", 3)], // line 3 is context (export function)
+      }],
+      metadata: { activeLenses: ["security"], skippedLenses: [], reviewRound: 1, reviewId: "test" },
+      projectRoot,
+    });
+
+    expect(result.validatedFindings.length).toBe(1);
+    expect(result.validatedFindings[0].origin).toBe("pre-existing");
+    expect(result.preExistingCount).toBe(1);
+    expect(result.preExistingFindings.length).toBe(1);
+  });
+
+  it("classifies findings in files not in diff as pre-existing", () => {
+    const result = handleSynthesize({
+      stage: "CODE_REVIEW",
+      diff: DIFF,
+      changedFiles: CHANGED_FILES,
+      lensResults: [{
+        lens: "security",
+        status: "complete",
+        findings: [makeSynthesizeFinding("security", "src/other.ts", 10)],
+      }],
+      metadata: { activeLenses: ["security"], skippedLenses: [], reviewRound: 1, reviewId: "test" },
+      projectRoot,
+    });
+
+    expect(result.validatedFindings[0].origin).toBe("pre-existing");
+    expect(result.preExistingCount).toBe(1);
+  });
+
+  it("skips origin classification without diff/changedFiles (backward compat)", () => {
+    const result = handleSynthesize({
+      stage: "CODE_REVIEW",
+      lensResults: [{
+        lens: "security",
+        status: "complete",
+        findings: [makeSynthesizeFinding("security", "src/other.ts", 10)],
+      }],
+      metadata: { activeLenses: ["security"], skippedLenses: [], reviewRound: 1, reviewId: "test" },
+      projectRoot,
+    });
+
+    expect(result.validatedFindings[0].origin).toBeUndefined();
+    expect(result.preExistingCount).toBe(0);
+    expect(result.preExistingFindings.length).toBe(0);
+  });
+
+  it("filters suggestions from pre-existing findings", () => {
+    const result = handleSynthesize({
+      stage: "CODE_REVIEW",
+      diff: DIFF,
+      changedFiles: CHANGED_FILES,
+      lensResults: [{
+        lens: "clean-code",
+        status: "complete",
+        findings: [
+          makeSynthesizeFinding("clean-code", "src/other.ts", 10, { severity: "suggestion" }),
+          makeSynthesizeFinding("clean-code", "src/other.ts", 20, { severity: "minor" }),
+        ],
+      }],
+      metadata: { activeLenses: ["clean-code"], skippedLenses: [], reviewRound: 1, reviewId: "test" },
+      projectRoot,
+    });
+
+    // Both are pre-existing but suggestion is filtered
+    expect(result.validatedFindings.length).toBe(2);
+    expect(result.preExistingFindings.length).toBe(1);
+    expect(result.preExistingFindings[0].severity).toBe("minor");
+  });
+
+  it("PLAN_REVIEW classifies all findings as introduced", () => {
+    const result = handleSynthesize({
+      stage: "PLAN_REVIEW",
+      diff: "Some plan text",
+      changedFiles: [],
+      lensResults: [{
+        lens: "security",
+        status: "complete",
+        findings: [makeSynthesizeFinding("security", "src/api.ts", 10)],
+      }],
+      metadata: { activeLenses: ["security"], skippedLenses: [], reviewRound: 1, reviewId: "test" },
+      projectRoot,
+    });
+
+    // PLAN_REVIEW: all "introduced" per classification rules
+    expect(result.preExistingCount).toBe(0);
   });
 });

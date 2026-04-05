@@ -46,7 +46,7 @@ export class CodeReviewStage implements WorkflowStage {
           "1. Capture the full diff and changed file list (`git diff --name-only`)",
           "2. Call `claudestory_review_lenses_prepare` with the diff, changedFiles, stage: CODE_REVIEW, and ticketDescription",
           "3. Spawn all lens subagents in parallel (each prompt is returned by the prepare tool)",
-          "4. Collect results and call `claudestory_review_lenses_synthesize` with the lens results",
+          "4. Collect results and call `claudestory_review_lenses_synthesize` with the lens results, plus the diff and changedFiles from step 1 and the sessionId (enables automatic origin classification and issue filing for pre-existing findings)",
           "5. Run the merger agent with the returned mergerPrompt, then call `claudestory_review_lenses_judge`",
           "6. Run the judge agent and report the final SynthesisResult verdict and findings",
           "",
@@ -56,7 +56,7 @@ export class CodeReviewStage implements WorkflowStage {
           diffReminder,
           "Do NOT compress or summarize the diff.",
           "Lens subagents run in parallel with read-only tools (Read, Grep, Glob).",
-          "IMPORTANT: After the review, file ANY pre-existing issues discovered (bugs in surrounding code, missing guards, etc.) using claudestory_issue_create with severity and impact. Do NOT skip this step. Do NOT fix them in this ticket.",
+          "Pre-existing issues in surrounding code are automatically classified and filed by the synthesize tool when you pass diff, changedFiles, and sessionId. Check filedIssues in the synthesize response.",
         ],
         transitionedFrom: ctx.state.previousState ?? undefined,
       };

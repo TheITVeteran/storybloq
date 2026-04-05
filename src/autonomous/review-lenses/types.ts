@@ -42,6 +42,7 @@ export interface LensFinding {
   issueKey?: string;
   blocking?: boolean;
   mergedFrom?: string[] | null;
+  origin?: "introduced" | "pre-existing";
 }
 
 // ── Lens result envelope ───────────────────────────────────────

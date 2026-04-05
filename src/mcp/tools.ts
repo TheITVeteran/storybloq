@@ -5,6 +5,7 @@
  *   loadProject(root) → build CommandContext → call handler → classify result
  */
 import { z } from "zod";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { TARGET_WORK_ID_REGEX } from "../autonomous/session-types.js";
 import { handlePrepare, handleSynthesize, handleJudge } from "../autonomous/review-lenses/mcp-handlers.js";
@@ -759,7 +760,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
   });
 
   server.registerTool("claudestory_review_lenses_synthesize", {
-    description: "Synthesize lens results after parallel review. Validates findings, applies blocking policy, generates merger prompt. Call after collecting all lens subagent results.",
+    description: "Synthesize lens results after parallel review. Validates findings, applies blocking policy, classifies origin (introduced vs pre-existing), auto-files pre-existing issues, generates merger prompt. Call after collecting all lens subagent results.",
     inputSchema: {
       stage: z.enum(["CODE_REVIEW", "PLAN_REVIEW"]).optional().describe("Review stage (defaults to CODE_REVIEW)"),
       lensResults: z.array(z.object({
@@ -771,8 +772,12 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
       skippedLenses: z.array(z.string()).describe("Skipped lens names from prepare step"),
       reviewRound: z.number().int().min(1).optional().describe("Current review round"),
       reviewId: z.string().optional().describe("Review ID from prepare step"),
+      // T-192: Origin classification inputs
+      diff: z.string().optional().describe("The diff being reviewed (for origin classification of findings into introduced vs pre-existing)"),
+      changedFiles: z.array(z.string()).optional().describe("Changed file paths from prepare step (for origin classification)"),
+      sessionId: z.string().optional().describe("Active session ID (for dedup of auto-filed pre-existing issues across review rounds)"),
     },
-  }, (args) => {
+  }, async (args) => {
     try {
       const result = handleSynthesize({
         stage: args.stage,
@@ -784,8 +789,65 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
           reviewId: args.reviewId ?? "unknown",
         },
         projectRoot: pinnedRoot,
+        diff: args.diff,
+        changedFiles: args.changedFiles,
       });
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+
+      // T-192: Auto-file pre-existing findings as issues
+      const filedIssues: { issueKey: string; issueId: string }[] = [];
+      if (result.preExistingFindings.length > 0) {
+        const sessionDir = args.sessionId
+          ? join(pinnedRoot, ".story", "sessions", args.sessionId)
+          : null;
+        const alreadyFiled = sessionDir ? readFiledPreexisting(sessionDir) : new Set<string>();
+        const sizeBeforeLoop = alreadyFiled.size;
+
+        for (const f of result.preExistingFindings) {
+          const dedupKey = f.issueKey ?? `${f.file ?? ""}:${f.line ?? 0}:${f.category}`;
+          if (alreadyFiled.has(dedupKey)) continue;
+
+          try {
+            const { handleIssueCreate } = await import("../cli/commands/issue.js");
+            const severityMap: Record<string, string> = { critical: "critical", major: "high", minor: "medium" };
+            const severity = severityMap[f.severity] ?? "medium";
+            const issueResult = await handleIssueCreate(
+              {
+                title: `[pre-existing] [${f.category}] ${f.description.slice(0, 60)}`,
+                severity,
+                impact: f.description,
+                components: ["review-lenses"],
+                relatedTickets: [],
+                location: f.file && f.line != null ? [`${f.file}:${f.line}`] : [],
+              },
+              "json",
+              pinnedRoot,
+            );
+
+            let issueId: string | undefined;
+            try {
+              const parsed = JSON.parse(issueResult.output ?? "");
+              issueId = parsed?.data?.id;
+            } catch {
+              const match = issueResult.output?.match(/ISS-\d+/);
+              issueId = match?.[0];
+            }
+
+            if (issueId) {
+              filedIssues.push({ issueKey: dedupKey, issueId });
+              alreadyFiled.add(dedupKey);
+            }
+          } catch {
+            // Best-effort filing; finding still goes through review pipeline
+          }
+        }
+
+        if (sessionDir && alreadyFiled.size > sizeBeforeLoop) {
+          writeFiledPreexisting(sessionDir, alreadyFiled);
+        }
+      }
+
+      const output = { ...result, filedIssues };
+      return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };
     } catch (err) {
       const msg = err instanceof Error ? err.message.replace(/\/[^\s]+/g, "<path>") : "unknown error";
       return { content: [{ type: "text" as const, text: `Error synthesizing lens results: ${msg}` }], isError: true };
@@ -826,4 +888,27 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
       return { content: [{ type: "text" as const, text: `Error preparing judge: ${msg}` }], isError: true };
     }
   });
+}
+
+// ── T-192: Pre-existing finding dedup helpers ─────────────────
+
+const FILED_PREEXISTING_FILE = "filed-preexisting.json";
+
+function readFiledPreexisting(sessionDir: string): Set<string> {
+  try {
+    const raw = readFileSync(join(sessionDir, FILED_PREEXISTING_FILE), "utf-8");
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeFiledPreexisting(sessionDir: string, keys: Set<string>): void {
+  try {
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, FILED_PREEXISTING_FILE), JSON.stringify([...keys], null, 2));
+  } catch {
+    // Best-effort; dedup may miss on next round but no data loss
+  }
 }

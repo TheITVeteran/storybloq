@@ -18,6 +18,7 @@ import { prepareLensReview } from "./orchestrator.js";
 import { validateFindings } from "./schema-validator.js";
 import { generateIssueKey } from "./issue-key.js";
 import { computeBlocking } from "./blocking-policy.js";
+import { parseDiffScope, classifyOrigin } from "./diff-scope.js";
 import { buildMergerPrompt, parseMergerResult } from "./merger.js";
 import { buildJudgePrompt } from "./judge.js";
 import type {
@@ -177,6 +178,9 @@ export interface SynthesizeInput {
   };
   readonly sessionDir?: string;
   readonly projectRoot?: string;
+  // T-192: Origin classification inputs
+  readonly diff?: string;
+  readonly changedFiles?: readonly string[];
 }
 
 export interface SynthesizeOutput {
@@ -187,6 +191,9 @@ export interface SynthesizeOutput {
   readonly lensesInsufficientContext: readonly string[];
   readonly droppedFindings: number;
   readonly droppedDetails: readonly string[];
+  // T-192: Pre-existing findings identified by origin classification
+  readonly preExistingFindings: readonly LensFinding[];
+  readonly preExistingCount: number;
 }
 
 export function handleSynthesize(input: SynthesizeInput): SynthesizeOutput {
@@ -211,6 +218,9 @@ export function handleSynthesize(input: SynthesizeInput): SynthesizeOutput {
     } catch { /* no config or parse error -- use defaults */ }
   }
   const stage: ReviewStage = input.stage ?? "CODE_REVIEW";
+  // T-192: Pre-compute diff scope for origin classification (null if inputs missing or PLAN_REVIEW)
+  const diffScope = input.diff && input.changedFiles && stage === "CODE_REVIEW"
+    ? parseDiffScope(input.diff) : null;
   const lensesCompleted: string[] = [];
   const lensesFailed: string[] = [];
   const lensesInsufficientContext: string[] = [];
@@ -246,6 +256,7 @@ export function handleSynthesize(input: SynthesizeInput): SynthesizeOutput {
           ...f,
           issueKey: generateIssueKey(f),
           blocking: computeBlocking(f, stage, policy),
+          origin: diffScope ? classifyOrigin(f, diffScope, stage) : undefined,
         };
         allFindings.push(enriched);
       }
@@ -267,6 +278,11 @@ export function handleSynthesize(input: SynthesizeInput): SynthesizeOutput {
     }
   }
 
+  // T-192: Collect pre-existing findings for auto-filing (origin set during enrichment above)
+  const preExistingFindings = allFindings.filter(
+    f => f.origin === "pre-existing" && f.severity !== "suggestion",
+  );
+
   const lensMetadata = buildLensMetadata(lensesCompleted, lensesFailed, lensesInsufficientContext);
 
   const mergerPrompt = buildMergerPrompt(allFindings, lensMetadata, stage);
@@ -283,6 +299,8 @@ export function handleSynthesize(input: SynthesizeInput): SynthesizeOutput {
     lensesInsufficientContext,
     droppedFindings: droppedTotal,
     droppedDetails: dropReasons.slice(0, 5),
+    preExistingFindings,
+    preExistingCount: preExistingFindings.length,
   };
 }
 
