@@ -21,7 +21,7 @@ export class CodeReviewStage implements WorkflowStage {
     const backends = ctx.state.config.reviewBackends;
     const codeReviews = ctx.state.reviews.code;
     const roundNum = codeReviews.length + 1;
-    const reviewer = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable);
+    const reviewer = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable, ctx.state.codexUnavailableSince);
     const risk = ctx.state.ticket?.realizedRisk ?? ctx.state.ticket?.risk ?? "low";
     const rounds = requiredRounds(risk as "low" | "medium" | "high");
     const mergeBase = ctx.state.git.mergeBase;
@@ -97,7 +97,7 @@ export class CodeReviewStage implements WorkflowStage {
     const roundNum = codeReviews.length + 1;
     const findings = report.findings ?? [];
     const backends = ctx.state.config.reviewBackends;
-    const computedReviewer = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable);
+    const computedReviewer = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable, ctx.state.codexUnavailableSince);
     // ISS-102: Use actual reviewer from report, infer from notes, or fall back to computed
     const reviewerBackend = report.reviewer
       ?? (computedReviewer === "codex" && report.notes && /codex\b.*\b(unavail|limit|failed|down|error|usage)/i.test(report.notes) ? "agent" : null)
@@ -115,8 +115,9 @@ export class CodeReviewStage implements WorkflowStage {
     });
 
     // ISS-098: Detect codex unavailability from agent notes
-    if (!ctx.state.codexUnavailable && report.notes && /codex\b.*\b(unavail|limit|failed|down|error|usage)/i.test(report.notes)) {
-      ctx.writeState({ codexUnavailable: true });
+    // ISS-110: Store timestamp instead of just boolean for TTL-based expiry
+    if (report.notes && /codex\b.*\b(unavail|limit|failed|down|error|usage)/i.test(report.notes)) {
+      ctx.writeState({ codexUnavailable: true, codexUnavailableSince: new Date().toISOString() });
     }
 
     const risk = ctx.state.ticket?.realizedRisk ?? ctx.state.ticket?.risk ?? "low";
@@ -239,7 +240,7 @@ export class CodeReviewStage implements WorkflowStage {
     }
 
     // Stay in CODE_REVIEW
-    const nextReviewerName = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable);
+    const nextReviewerName = nextReviewer(codeReviews, backends, ctx.state.codexUnavailable, ctx.state.codexUnavailableSince);
     const mergeBase = ctx.state.git.mergeBase;
     return {
       action: "retry",
