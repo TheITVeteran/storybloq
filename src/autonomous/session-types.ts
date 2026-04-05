@@ -506,6 +506,7 @@ export interface GuideReportInput {
   readonly reviewerSessionId?: string;
   readonly overrideOverlap?: boolean;
   readonly notes?: string;
+  readonly reviewer?: string;  // ISS-102: actual reviewer backend used (overrides computed nextReviewer)
 }
 
 export interface GuideInput {

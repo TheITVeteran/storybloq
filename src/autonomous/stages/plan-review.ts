@@ -82,7 +82,11 @@ export class PlanReviewStage implements WorkflowStage {
     const roundNum = planReviews.length + 1;
     const findings = report.findings ?? [];
     const backends = ctx.state.config.reviewBackends;
-    const reviewerBackend = nextReviewer(planReviews, backends, ctx.state.codexUnavailable);
+    const computedReviewer = nextReviewer(planReviews, backends, ctx.state.codexUnavailable);
+    // ISS-102: Use actual reviewer from report, infer from notes, or fall back to computed
+    const reviewerBackend = report.reviewer
+      ?? (computedReviewer === "codex" && report.notes && /codex\b.*\b(unavail|limit|failed|down|error|usage)/i.test(report.notes) ? "agent" : null)
+      ?? computedReviewer;
     planReviews.push({
       round: roundNum,
       reviewer: reviewerBackend,

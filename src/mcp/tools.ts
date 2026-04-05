@@ -730,6 +730,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
           disposition: z.string(),
         })).optional().describe("Review findings"),
         reviewerSessionId: z.string().optional().describe("Codex session ID"),
+        reviewer: z.string().optional().describe("Actual reviewer backend used (e.g. 'agent' when codex was unavailable)"),
         notes: z.string().optional().describe("Free-text notes"),
       }).optional().describe("Report data (required for report action)"),
     },
