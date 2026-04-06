@@ -180,15 +180,18 @@ export class FinalizeStage implements WorkflowStage {
     }
 
     // ISS-025 + ISS-063: Overlap detection — block staging of pre-existing untracked files.
-    // Exclude the current session's ticket file from overlap (the guide picked this ticket,
-    // so its .story/ file is expected even if it was untracked at session start).
+    // Exclude the current session's ticket and issue files from overlap (the guide picked
+    // this work, so its .story/ files are expected even if untracked at session start).
     const baselineUntracked = ctx.state.git.baseline?.untrackedPaths ?? [];
     if (baselineUntracked.length > 0) {
       const sessionTicketPath = ctx.state.ticket?.id
         ? `.story/tickets/${ctx.state.ticket.id}.json`
         : null;
+      const sessionIssuePath = ctx.state.currentIssue?.id
+        ? `.story/issues/${ctx.state.currentIssue.id}.json`
+        : null;
       const overlap = stagedResult.data.filter(
-        (f: string) => baselineUntracked.includes(f) && f !== sessionTicketPath,
+        (f: string) => baselineUntracked.includes(f) && f !== sessionTicketPath && f !== sessionIssuePath,
       );
       if (overlap.length > 0) {
         if (report.overrideOverlap) {
@@ -267,8 +270,11 @@ export class FinalizeStage implements WorkflowStage {
         const sessionTicketPath = ctx.state.ticket?.id
           ? `.story/tickets/${ctx.state.ticket.id}.json`
           : null;
+        const sessionIssuePath = ctx.state.currentIssue?.id
+          ? `.story/issues/${ctx.state.currentIssue.id}.json`
+          : null;
         const overlap = stagedResult.data.filter(
-          (f: string) => baselineUntracked.includes(f) && f !== sessionTicketPath,
+          (f: string) => baselineUntracked.includes(f) && f !== sessionTicketPath && f !== sessionIssuePath,
         );
         if (overlap.length > 0) {
           ctx.writeState({ finalizeCheckpoint: null });
