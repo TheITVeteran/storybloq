@@ -95,7 +95,7 @@ describe("formatRecap", () => {
       tickets: [makeTicket({ id: "T-001", phase: "p1" })],
       roadmap: makeRoadmap([makePhase({ id: "p1" })]),
     });
-    const recap = await buildRecap(state, null);
+    const recap = await buildRecap(state, null, "/tmp");
     const md = formatRecap(recap, state, "md");
     expect(md).toContain("## Suggested Actions");
     expect(md).toContain("T-001");
@@ -118,7 +118,7 @@ describe("formatRecap", () => {
       },
       filename: "snap.json",
     };
-    const recap = await buildRecap(currentState, snapshotInfo);
+    const recap = await buildRecap(currentState, snapshotInfo, "/tmp");
     const md = formatRecap(recap, currentState, "md");
     expect(md).toContain("Since snapshot:");
     expect(md).toContain("open → complete");
@@ -140,7 +140,7 @@ describe("formatRecap", () => {
       },
       filename: "snap.json",
     };
-    const recap = await buildRecap(state, snapshotInfo);
+    const recap = await buildRecap(state, snapshotInfo, "/tmp");
     const md = formatRecap(recap, state, "md");
     expect(md).toContain("integrity warnings");
   });
@@ -151,7 +151,7 @@ describe("formatRecap", () => {
         makeIssue({ id: "ISS-001", severity: "critical", title: "Crash" }),
       ],
     });
-    const recap = await buildRecap(state, null);
+    const recap = await buildRecap(state, null, "/tmp");
     const md = formatRecap(recap, state, "md");
     expect(md).toContain("critical issue");
     expect(md).toContain("Crash");
@@ -159,7 +159,7 @@ describe("formatRecap", () => {
 
   it("JSON envelope matches RecapResult shape", async () => {
     const state = makeState();
-    const recap = await buildRecap(state, null);
+    const recap = await buildRecap(state, null, "/tmp");
     const json = formatRecap(recap, state, "json");
     const parsed = JSON.parse(json);
     expect(parsed.data).toHaveProperty("snapshot");

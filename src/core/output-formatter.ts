@@ -788,7 +788,7 @@ export function formatRecap(
       if (recap.staleness.status === "diverged") {
         lines.push("**Warning:** Snapshot commit is not an ancestor of current HEAD (history diverged; possible rebase, force-push, or branch switch).");
       } else if (recap.staleness.status === "behind" && recap.staleness.commitsBehind) {
-        lines.push(`**Warning:** Snapshot is ${recap.staleness.commitsBehind} commit(s) behind HEAD — context may be stale.`);
+        lines.push(`**Warning:** Snapshot is ${recap.staleness.commitsBehind} commit(s) behind HEAD -- context may be stale.`);
       }
     }
 

@@ -451,7 +451,7 @@ export function diffStates(
 export async function buildRecap(
   currentState: ProjectState,
   snapshotInfo: { snapshot: SnapshotV1; filename: string } | null,
-  root?: string,
+  root: string,
 ): Promise<RecapResult> {
   // Suggested actions (always computed, even without snapshot)
   const next = nextTicket(currentState);
@@ -501,7 +501,7 @@ export async function buildRecap(
 
   // Git staleness detection (T-132)
   let staleness: RecapStaleness | undefined;
-  if (snapshot.gitHead && root) {
+  if (snapshot.gitHead) {
     const currentHeadResult = await gitHeadHash(root);
     if (currentHeadResult.ok) {
       const snapshotSha = snapshot.gitHead;
@@ -512,12 +512,15 @@ export async function buildRecap(
         if (ancestorResult.ok && ancestorResult.data) {
           // Snapshot is an ancestor of HEAD -- count commits behind
           const distResult = await gitCommitDistance(root, snapshotSha, currentSha);
-          staleness = {
-            status: "behind",
-            snapshotSha,
-            currentSha,
-            ...(distResult.ok ? { commitsBehind: distResult.data } : {}),
-          };
+          if (distResult.ok) {
+            staleness = {
+              status: "behind",
+              snapshotSha,
+              currentSha,
+              commitsBehind: distResult.data,
+            };
+          }
+          // If distResult fails, omit staleness entirely for consistent degradation
         } else if (ancestorResult.ok && !ancestorResult.data) {
           // Not an ancestor -- history diverged
           staleness = { status: "diverged", snapshotSha, currentSha };

@@ -418,7 +418,7 @@ describe("snapshot", () => {
   describe("buildRecap", () => {
     it("returns null changes when no snapshot", async () => {
       const state = makeState();
-      const recap = await buildRecap(state, null);
+      const recap = await buildRecap(state, null, "/tmp");
       expect(recap.snapshot).toBeNull();
       expect(recap.changes).toBeNull();
       expect(recap.partial).toBe(false);
@@ -430,7 +430,7 @@ describe("snapshot", () => {
         issues: [makeIssue({ id: "ISS-001", severity: "critical" })],
         roadmap: makeRoadmap([makePhase({ id: "p1" })]),
       });
-      const recap = await buildRecap(state, null);
+      const recap = await buildRecap(state, null, "/tmp");
       expect(recap.suggestedActions.nextTicket).not.toBeNull();
       expect(recap.suggestedActions.nextTicket!.id).toBe("T-001");
       expect(recap.suggestedActions.highSeverityIssues).toHaveLength(1);
@@ -451,7 +451,7 @@ describe("snapshot", () => {
         },
         filename: "2026-03-20T00-00-00-000.json",
       };
-      const recap = await buildRecap(state, snapshotInfo);
+      const recap = await buildRecap(state, snapshotInfo, "/tmp");
       expect(recap.partial).toBe(true);
     });
 
@@ -469,7 +469,7 @@ describe("snapshot", () => {
         },
         filename: "2026-03-20T00-00-00-000.json",
       };
-      const recap = await buildRecap(state, snapshotInfo);
+      const recap = await buildRecap(state, snapshotInfo, "/tmp");
       expect(recap.partial).toBe(false);
     });
 
@@ -490,7 +490,7 @@ describe("snapshot", () => {
         },
         filename: "2026-03-20T00-00-00-000.json",
       };
-      const recap = await buildRecap(currentState, snapshotInfo);
+      const recap = await buildRecap(currentState, snapshotInfo, "/tmp");
       expect(recap.changes).not.toBeNull();
       expect(recap.changes!.tickets.statusChanged).toHaveLength(1);
       expect(recap.changes!.phases.statusChanged).toHaveLength(1);
@@ -591,7 +591,7 @@ describe("snapshot", () => {
           makeIssue({ id: "ISS-005", severity: "high", status: "resolved" }),
         ],
       });
-      const recap = await buildRecap(state, null);
+      const recap = await buildRecap(state, null, "/tmp");
       // Only critical + high, excluding resolved
       expect(recap.suggestedActions.highSeverityIssues).toHaveLength(2);
       const ids = recap.suggestedActions.highSeverityIssues.map((i) => i.id);
@@ -618,7 +618,7 @@ describe("snapshot", () => {
       expect(recap.staleness).toBeUndefined();
     });
 
-    it("omits staleness when no root provided", async () => {
+    it("omits staleness when git is unavailable at recap time", async () => {
       const state = makeState();
       const snapshotInfo = {
         snapshot: {
@@ -629,12 +629,12 @@ describe("snapshot", () => {
           roadmap: emptyRoadmap,
           tickets: [],
           issues: [],
-          gitHead: "abc1234",
+          gitHead: "abc1234abc1234abc1234abc1234abc1234abc134",
         },
         filename: "2026-03-20T00-00-00-000.json",
       };
-      // No root param -> no staleness
-      const recap = await buildRecap(state, snapshotInfo);
+      // Non-git directory -> gitHeadHash fails -> no staleness
+      const recap = await buildRecap(state, snapshotInfo, "/tmp");
       expect(recap.staleness).toBeUndefined();
     });
   });
