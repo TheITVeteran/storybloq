@@ -142,6 +142,28 @@ describe("HMAC cross-platform contract", () => {
     expect(hmac.length).toBe(64); // SHA-256 hex = 64 chars
   });
 
+  it("produces deterministic HMAC for a known canonical payload with inputPreview", () => {
+    const key = "test-hmac-key-32-bytes-long-xxxx";
+    const canonical = JSON.stringify({
+      description: "Execute rm -rf /tmp/test",
+      inputPreview: "rm -rf /tmp/test",
+      nonce: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      receivedAt: "2026-01-01T00:00:00.000Z",
+      requestId: "aBc12",
+      toolName: "Bash",
+    });
+
+    const hmac = computeHmac(canonical, key);
+
+    // Golden value: if TS or Swift changes canonical format, this test MUST fail.
+    // The Swift side must produce this exact HMAC for the same input.
+    const goldenHmac = "80fa24b1abda9098878c4dec0828893ca77a2f4283242b67cd02d4c164151e98";
+    expect(hmac).toBe(goldenHmac);
+
+    // Verify inputPreview is present in canonical
+    expect(canonical).toContain('"inputPreview":"rm -rf /tmp/test"');
+  });
+
   it("uses sorted keys for canonical JSON matching Swift JSONSerialization .sortedKeys", () => {
     const key = "contract-test-key-at-least-32-ch";
     // Deliberately unsorted input; the canonical format must sort them

@@ -183,7 +183,6 @@ export class FinalizeStage implements WorkflowStage {
     // Exclude the current session's ticket file from overlap (the guide picked this ticket,
     // so its .story/ file is expected even if it was untracked at session start).
     const baselineUntracked = ctx.state.git.baseline?.untrackedPaths ?? [];
-    let overlapOverridden = false;
     if (baselineUntracked.length > 0) {
       const sessionTicketPath = ctx.state.ticket?.id
         ? `.story/tickets/${ctx.state.ticket.id}.json`
@@ -193,7 +192,7 @@ export class FinalizeStage implements WorkflowStage {
       );
       if (overlap.length > 0) {
         if (report.overrideOverlap) {
-          overlapOverridden = true;
+          // Override accepted; proceed with staging
         } else {
           return {
             action: "retry",

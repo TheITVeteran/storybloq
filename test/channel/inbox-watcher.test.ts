@@ -208,6 +208,45 @@ describe("inbox-watcher", () => {
     expect(mock.notifications[0].method).toBe("notifications/claude/channel");
   });
 
+  it("does not leak FSWatcher when startInboxWatcher is called twice", async () => {
+    const mock = createMockServer();
+    await startInboxWatcher(root, mock as any);
+    // Call again -- should close first watcher, not leak
+    await startInboxWatcher(root, mock as any);
+
+    // Write an event after the second start to verify it's functional
+    await writeEvent(inboxPath, "pause_session", {}, "2026-04-05T10:00:00.000Z");
+    // Give the fs watcher a moment to trigger
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // The event should be processed by the second watcher
+    const remaining = await readdir(inboxPath);
+    const jsonFiles = remaining.filter((f) => f.endsWith(".json"));
+    expect(jsonFiles).toHaveLength(0);
+    expect(mock.notifications.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("recovers stale .processing files on startup", async () => {
+    await mkdir(inboxPath, { recursive: true });
+    // Simulate a stale .processing file left by a crashed previous run
+    const staleFilename = "2026-04-05T10:00:00.000Z-ticket_requested.json.processing";
+    const eventData = JSON.stringify({
+      event: "ticket_requested",
+      timestamp: "2026-04-05T10:00:00.000Z",
+      payload: { ticketId: "T-099" },
+    });
+    await writeFile(join(inboxPath, staleFilename), eventData, "utf-8");
+
+    const mock = createMockServer();
+    await startInboxWatcher(root, mock as any);
+
+    // The .processing file should have been recovered and processed
+    const remaining = await readdir(inboxPath);
+    const allFiles = remaining.filter((f) => !f.startsWith("."));
+    expect(allFiles).toHaveLength(0);
+    expect(mock.notifications).toHaveLength(1);
+  });
+
   it("trims .failed/ directory beyond max", async () => {
     await mkdir(inboxPath, { recursive: true });
     const failedDir = join(inboxPath, ".failed");

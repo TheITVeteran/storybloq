@@ -38,6 +38,9 @@ export async function startInboxWatcher(root: string, server: McpServer): Promis
   // Ensure inbox directory exists
   await mkdir(inboxPath, { recursive: true });
 
+  // Recover stale .processing files from interrupted previous runs (startup only)
+  await recoverStaleProcessingFiles(inboxPath);
+
   // Process any existing files on startup
   await processInbox(inboxPath, server);
 
@@ -109,6 +112,28 @@ function startPollingFallback(inboxPath: string, server: McpServer): void {
   }, 2000);
 }
 
+// MARK: - Stale Processing Recovery (startup only)
+
+async function recoverStaleProcessingFiles(inboxPath: string): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(inboxPath);
+  } catch {
+    return;
+  }
+  for (const f of entries) {
+    if (f.endsWith(".processing")) {
+      const originalName = f.slice(0, -".processing".length);
+      try {
+        await rename(join(inboxPath, f), join(inboxPath, originalName));
+        process.stderr.write(`claudestory: recovered stale processing file: ${f}\n`);
+      } catch {
+        // Best effort -- file may have been cleaned up
+      }
+    }
+  }
+}
+
 // MARK: - Inbox Processing
 
 async function processInbox(inboxPath: string, server: McpServer): Promise<void> {
@@ -149,29 +174,41 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
   }
 
   const filePath = join(inboxPath, filename);
+  const processingPath = join(inboxPath, `${filename}.processing`);
 
-  // Step 2: Read file
+  // Step 1.5: Atomic claim -- rename to .processing before reading.
+  // If another poll cycle runs concurrently, the rename will fail for the loser.
+  try {
+    await rename(filePath, processingPath);
+  } catch {
+    return; // Another handler already claimed this file
+  }
+
+  // Step 2: Read file (from .processing path)
   let raw: string;
   try {
-    raw = await readFile(filePath, "utf-8");
+    raw = await readFile(processingPath, "utf-8");
   } catch {
-    return; // File may have been deleted between readdir and readFile
+    return; // File may have been deleted between rename and readFile
   }
 
   // Step 3: Parse and validate immediately (no intermediate routing)
+  // Note: after atomic claim, moveToFailed uses the .processing filename
+  const processingFilename = `${filename}.processing`;
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
     process.stderr.write(`claudestory: invalid JSON in channel event ${filename}\n`);
-    await moveToFailed(inboxPath, filename);
+    await moveToFailed(inboxPath, processingFilename, filename);
     return;
   }
 
   const result = ChannelEventSchema.safeParse(parsed);
   if (!result.success) {
     process.stderr.write(`claudestory: invalid channel event schema in ${filename}: ${result.error.message}\n`);
-    await moveToFailed(inboxPath, filename);
+    await moveToFailed(inboxPath, processingFilename, filename);
     return;
   }
 
@@ -208,8 +245,14 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
       if (retries >= MAX_PERMISSION_RETRIES) {
         process.stderr.write(`claudestory: permission notification failed after ${retries} retries, quarantining: ${msg}\n`);
         permissionRetryCount.delete(filename);
-        await moveToFailed(inboxPath, filename);
+        await moveToFailed(inboxPath, processingFilename, filename);
         return;
+      }
+      // Rename back to .json so it's picked up on the next cycle
+      try {
+        await rename(processingPath, filePath);
+      } catch {
+        // Best effort
       }
       process.stderr.write(`claudestory: permission notification failed (attempt ${retries}/${MAX_PERMISSION_RETRIES}), keeping for retry: ${msg}\n`);
       return;
@@ -219,9 +262,9 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
     process.stderr.write(`claudestory: channel notification failed (expected if channels unavailable): ${msg}\n`);
   }
 
-  // Step 5: Delete consumed event file
+  // Step 5: Delete consumed event file (.processing)
   try {
-    await unlink(filePath);
+    await unlink(processingPath);
   } catch {
     // Best effort -- file may already be gone
   }
@@ -229,20 +272,21 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
 
 // MARK: - Failed File Handling
 
-async function moveToFailed(inboxPath: string, filename: string): Promise<void> {
+async function moveToFailed(inboxPath: string, sourceFilename: string, destFilename?: string): Promise<void> {
   const failedDir = join(inboxPath, FAILED_DIR);
+  const targetName = destFilename ?? sourceFilename;
   try {
     await mkdir(failedDir, { recursive: true });
-    await rename(join(inboxPath, filename), join(failedDir, filename));
+    await rename(join(inboxPath, sourceFilename), join(failedDir, targetName));
   } catch (err: unknown) {
     // Best effort -- if we can't move it, try to delete it
     try {
-      await unlink(join(inboxPath, filename));
+      await unlink(join(inboxPath, sourceFilename));
     } catch {
       // Give up
     }
     const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`claudestory: failed to move ${filename} to .failed/: ${msg}\n`);
+    process.stderr.write(`claudestory: failed to move ${sourceFilename} to .failed/: ${msg}\n`);
   }
 }
 

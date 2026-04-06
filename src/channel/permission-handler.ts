@@ -54,6 +54,10 @@ export function computeHmac(payload: string, key: string): string {
  * @param root - Project root directory
  * @param fields - Permission request fields from Claude Code
  * @param hmacKey - HMAC key for signing (from CLAUDESTORY_CHANNEL_KEY env var)
+ *
+ * @pending Not yet wired to MCP notification handler. The MCP server does not
+ * currently register a handler for permission_request notifications from Claude Code.
+ * This function is infrastructure for when Claude Code exposes that notification API.
  */
 export async function writePermissionRequest(
   root: string,

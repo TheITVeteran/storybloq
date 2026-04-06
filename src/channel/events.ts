@@ -17,7 +17,7 @@ const PauseSessionPayload = z.object({});
 const ResumeSessionPayload = z.object({});
 
 const CancelSessionPayload = z.object({
-  reason: z.string().optional(),
+  reason: z.string().max(1000).optional(),
 });
 
 const PriorityChangedPayload = z.object({
