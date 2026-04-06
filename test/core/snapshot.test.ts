@@ -671,4 +671,97 @@ describe("snapshot", () => {
       expect(parsed.gitHead).toBeUndefined();
     });
   });
+
+  describe("buildRecap staleness", () => {
+    async function setupGitProject(): Promise<string> {
+      const dir = await setupProject();
+      execSync(
+        "git init && git config user.email test@test.com && git config user.name Test && git add . && git commit -m init",
+        { cwd: dir, stdio: "pipe" },
+      );
+      return dir;
+    }
+
+    function getHead(dir: string): string {
+      return execSync("git rev-parse HEAD", { cwd: dir, encoding: "utf-8" }).trim();
+    }
+
+    it("omits staleness when snapshot SHA equals current HEAD (equal-SHA)", async () => {
+      const dir = await setupGitProject();
+      const sha = getHead(dir);
+      const state = makeState();
+      const snapshotInfo = {
+        snapshot: {
+          version: 1 as const,
+          createdAt: new Date().toISOString(),
+          project: "test",
+          config: minimalConfig,
+          roadmap: emptyRoadmap,
+          tickets: [],
+          issues: [],
+          gitHead: sha,
+        },
+        filename: "2026-03-20T00-00-00-000.json",
+      };
+      const recap = await buildRecap(state, snapshotInfo, dir);
+      expect(recap.staleness).toBeUndefined();
+    });
+
+    it("reports behind status when HEAD is ahead of snapshot", async () => {
+      const dir = await setupGitProject();
+      const snapshotSha = getHead(dir);
+      // Add two more commits
+      execSync("git commit --allow-empty -m 'second'", { cwd: dir, stdio: "pipe" });
+      execSync("git commit --allow-empty -m 'third'", { cwd: dir, stdio: "pipe" });
+      const state = makeState();
+      const snapshotInfo = {
+        snapshot: {
+          version: 1 as const,
+          createdAt: new Date().toISOString(),
+          project: "test",
+          config: minimalConfig,
+          roadmap: emptyRoadmap,
+          tickets: [],
+          issues: [],
+          gitHead: snapshotSha,
+        },
+        filename: "2026-03-20T00-00-00-000.json",
+      };
+      const recap = await buildRecap(state, snapshotInfo, dir);
+      expect(recap.staleness).toBeDefined();
+      expect(recap.staleness!.status).toBe("behind");
+      expect(recap.staleness!.commitsBehind).toBe(2);
+      expect(recap.staleness!.snapshotSha).toBe(snapshotSha);
+    });
+
+    it("reports diverged status when histories diverge", async () => {
+      const dir = await setupGitProject();
+      // Create a commit on a branch, then reset main to a different lineage
+      execSync("git commit --allow-empty -m 'commit-a'", { cwd: dir, stdio: "pipe" });
+      const snapshotSha = getHead(dir);
+      // Reset main back to init and create a different commit (diverged history)
+      execSync("git reset --hard HEAD~1", { cwd: dir, stdio: "pipe" });
+      execSync("git commit --allow-empty -m 'commit-b-diverged'", { cwd: dir, stdio: "pipe" });
+      // Now snapshotSha (commit-a) is NOT an ancestor of HEAD (commit-b-diverged)
+      const state = makeState();
+      const snapshotInfo = {
+        snapshot: {
+          version: 1 as const,
+          createdAt: new Date().toISOString(),
+          project: "test",
+          config: minimalConfig,
+          roadmap: emptyRoadmap,
+          tickets: [],
+          issues: [],
+          gitHead: snapshotSha,
+        },
+        filename: "2026-03-20T00-00-00-000.json",
+      };
+      const recap = await buildRecap(state, snapshotInfo, dir);
+      expect(recap.staleness).toBeDefined();
+      expect(recap.staleness!.status).toBe("diverged");
+      expect(recap.staleness!.snapshotSha).toBe(snapshotSha);
+      expect(recap.staleness!.commitsBehind).toBeUndefined();
+    });
+  });
 });
