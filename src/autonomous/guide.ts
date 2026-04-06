@@ -789,7 +789,9 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         const passMatch = combined.match(/(\d+)\s*pass/i);
         const failMatch = combined.match(/(\d+)\s*fail/i);
         const passCount = passMatch ? parseInt(passMatch[1]!, 10) : -1;
-        const failCount = failMatch ? parseInt(failMatch[1]!, 10) : -1;
+        // When all tests pass, vitest omits the fail line entirely. Treat missing fail count as 0
+        // when exit code is 0 and passes were detected (runner succeeded, just no failures to report).
+        const failCount = failMatch ? parseInt(failMatch[1]!, 10) : (exitCode === 0 && passCount > 0 ? 0 : -1);
         const output = combined.slice(-500);
         updated = { ...updated, testBaseline: { exitCode, passCount, failCount, summary: output } };
 
