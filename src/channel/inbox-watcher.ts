@@ -251,8 +251,12 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
       // Rename back to .json so it's picked up on the next cycle
       try {
         await rename(processingPath, filePath);
-      } catch {
-        // Best effort
+      } catch (renameErr: unknown) {
+        // Rename-back failed -- quarantine to prevent permanent orphan as .processing
+        const renameMsg = renameErr instanceof Error ? renameErr.message : String(renameErr);
+        process.stderr.write(`claudestory: rename-back failed for ${filename}, quarantining: ${renameMsg}\n`);
+        permissionRetryCount.delete(filename);
+        await moveToFailed(inboxPath, processingFilename, filename);
       }
       process.stderr.write(`claudestory: permission notification failed (attempt ${retries}/${MAX_PERMISSION_RETRIES}), keeping for retry: ${msg}\n`);
       return;
@@ -299,10 +303,11 @@ async function trimFailedDirectory(inboxPath: string): Promise<void> {
     return; // .failed/ may not exist
   }
 
-  if (files.length <= MAX_FAILED_FILES) return;
-
-  // Sort by name (timestamp-based) and delete oldest
+  // Filter to .json before guard -- non-JSON entries (.DS_Store etc.) must not inflate the count
   const sorted = files.filter((f) => f.endsWith(".json")).sort();
+  if (sorted.length <= MAX_FAILED_FILES) return;
+
+  // Delete oldest to stay under cap
   const toDelete = sorted.slice(0, sorted.length - MAX_FAILED_FILES);
   for (const f of toDelete) {
     try {
