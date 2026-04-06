@@ -851,7 +851,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     let recapText = "";
     try {
       const snapshotInfo = await loadLatestSnapshot(root);
-      const recap = buildRecap(projectState, snapshotInfo);
+      const recap = await buildRecap(projectState, snapshotInfo, root);
       if (recap.changes) {
         recapText = "Changes since last snapshot available.";
       }

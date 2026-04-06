@@ -90,6 +90,7 @@ export {
   type SnapshotV1,
   type SnapshotDiff,
   type RecapResult,
+  type RecapStaleness,
 } from "./snapshot.js";
 export {
   ExitCode,

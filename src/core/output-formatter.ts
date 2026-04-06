@@ -784,6 +784,13 @@ export function formatRecap(
     if (recap.partial) {
       lines.push("**Note:** Snapshot was taken from a project with integrity warnings. Diff may be incomplete.");
     }
+    if (recap.staleness) {
+      if (recap.staleness.status === "diverged") {
+        lines.push("**Warning:** Snapshot commit is not an ancestor of current HEAD (history diverged; possible rebase, force-push, or branch switch).");
+      } else if (recap.staleness.status === "behind" && recap.staleness.commitsBehind) {
+        lines.push(`**Warning:** Snapshot is ${recap.staleness.commitsBehind} commit(s) behind HEAD — context may be stale.`);
+      }
+    }
 
     const changes = recap.changes!;
     const hasChanges = hasAnyChanges(changes);
