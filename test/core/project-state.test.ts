@@ -391,20 +391,21 @@ describe("ProjectState", () => {
       expect(state.openTicketCount).toBe(1);
     });
 
-    it("computes openIssueCount correctly", () => {
+    it("computes activeIssueCount correctly (open + inprogress, excludes resolved)", () => {
       const issues = [
         makeIssue({ id: "ISS-001", status: "open" }),
         makeIssue({ id: "ISS-002", status: "resolved" }),
         makeIssue({ id: "ISS-003", status: "open" }),
+        makeIssue({ id: "ISS-004", status: "inprogress" }),
       ];
       const state = makeState({ issues });
-      expect(state.openIssueCount).toBe(2);
+      expect(state.activeIssueCount).toBe(3);
     });
 
-    it("computes issuesBySeverity for open issues only", () => {
+    it("computes issuesBySeverity for active issues (excludes resolved)", () => {
       const issues = [
         makeIssue({ id: "ISS-001", status: "open", severity: "high" }),
-        makeIssue({ id: "ISS-002", status: "open", severity: "high" }),
+        makeIssue({ id: "ISS-002", status: "inprogress", severity: "high" }),
         makeIssue({ id: "ISS-003", status: "resolved", severity: "high" }),
         makeIssue({ id: "ISS-004", status: "open", severity: "low" }),
       ];
@@ -480,7 +481,7 @@ describe("ProjectState", () => {
     it("handles empty inputs", () => {
       const state = makeState();
       expect(state.totalTicketCount).toBe(0);
-      expect(state.openIssueCount).toBe(0);
+      expect(state.activeIssueCount).toBe(0);
       expect(state.leafTickets).toEqual([]);
       expect(state.umbrellaIDs.size).toBe(0);
       expect(state.blockedCount).toBe(0);

@@ -41,7 +41,7 @@ export class ProjectState {
   readonly totalTicketCount: number;
   readonly openTicketCount: number;
   readonly completeTicketCount: number;
-  readonly openIssueCount: number;
+  readonly activeIssueCount: number;
   readonly issuesBySeverity: ReadonlyMap<IssueSeverity, number>;
   readonly activeNoteCount: number;
   readonly archivedNoteCount: number;
@@ -164,13 +164,13 @@ export class ProjectState {
     this.completeTicketCount = this.leafTickets.filter(
       (t) => t.status === "complete",
     ).length;
-    this.openIssueCount = input.issues.filter(
-      (i) => i.status === "open",
+    this.activeIssueCount = input.issues.filter(
+      (i) => i.status !== "resolved",
     ).length;
 
     const bySev = new Map<IssueSeverity, number>();
     for (const i of input.issues) {
-      if (i.status === "open") {
+      if (i.status !== "resolved") {
         bySev.set(i.severity, (bySev.get(i.severity) ?? 0) + 1);
       }
     }
