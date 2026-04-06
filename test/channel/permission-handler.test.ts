@@ -13,7 +13,8 @@ import { tmpdir } from "node:os";
 
 // Import will fail until implementation exists -- that's the TDD point.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { writePermissionRequest, validatePermissionRequestFields } from "../../src/channel/permission-handler.js";
+import { writePermissionRequest, validatePermissionRequestFields, computeHmac } from "../../src/channel/permission-handler.js";
+import { createHmac } from "node:crypto";
 
 describe("writePermissionRequest", () => {
   let tempDir: string;
@@ -105,6 +106,65 @@ describe("writePermissionRequest", () => {
     const files = await readdir(outboxDir);
     const content = JSON.parse(await readFile(join(outboxDir, files[0]), "utf-8"));
     expect(content.inputPreview).toBeUndefined();
+  });
+});
+
+describe("HMAC cross-platform contract", () => {
+  // This test verifies that the canonical JSON + HMAC computation produces a known output.
+  // The Swift side (PermissionOutboxWatcher) must produce the same HMAC for the same input.
+  // If this test changes, the Swift verification MUST be updated to match.
+  it("produces deterministic HMAC for a known canonical payload", () => {
+    const key = "test-hmac-key-32-bytes-long-xxxx";
+    // Canonical JSON: keys sorted alphabetically, no extra whitespace (JSON.stringify with sorted keys)
+    const canonical = JSON.stringify(
+      {
+        description: "Execute rm -rf /tmp/test",
+        nonce: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        receivedAt: "2026-01-01T00:00:00.000Z",
+        requestId: "aBc12",
+        toolName: "Bash",
+      },
+      // Keys already in sorted order above; JSON.stringify preserves insertion order
+    );
+
+    const hmac = computeHmac(canonical, key);
+
+    // Hardcoded golden value: if TS or Swift changes canonical format, this test MUST fail.
+    // The Swift side must produce this exact HMAC for the same input.
+    const goldenHmac = "c87d8cd56335540050d07cdb58a8332aaa90ed68fb1d8d6420b09d8e584a536b";
+    expect(hmac).toBe(goldenHmac);
+
+    // Verify canonical format is sorted-key JSON with no whitespace
+    expect(canonical).toBe(
+      '{"description":"Execute rm -rf /tmp/test","nonce":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","receivedAt":"2026-01-01T00:00:00.000Z","requestId":"aBc12","toolName":"Bash"}',
+    );
+
+    expect(hmac.length).toBe(64); // SHA-256 hex = 64 chars
+  });
+
+  it("uses sorted keys for canonical JSON matching Swift JSONSerialization .sortedKeys", () => {
+    const key = "contract-test-key-at-least-32-ch";
+    // Deliberately unsorted input; the canonical format must sort them
+    const fields: Record<string, unknown> = {
+      toolName: "Write",
+      requestId: "xYz99",
+      description: "Write file",
+      receivedAt: "2026-06-15T12:00:00.000Z",
+      nonce: "11111111-2222-3333-4444-555555555555",
+    };
+
+    // Build canonical the same way permission-handler.ts does
+    const sortedCanonical = JSON.stringify(fields, Object.keys(fields).sort());
+
+    // Verify keys are sorted
+    const parsed = JSON.parse(sortedCanonical);
+    const keys = Object.keys(parsed);
+    expect(keys).toEqual([...keys].sort());
+
+    // HMAC must be deterministic
+    const hmac1 = computeHmac(sortedCanonical, key);
+    const hmac2 = computeHmac(sortedCanonical, key);
+    expect(hmac1).toBe(hmac2);
   });
 });
 

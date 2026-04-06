@@ -42,8 +42,9 @@ export function validatePermissionRequestFields(fields: PermissionRequestFields)
 
 /**
  * Computes HMAC-SHA256 of the canonical payload string.
+ * Exported for cross-platform contract testing.
  */
-function computeHmac(payload: string, key: string): string {
+export function computeHmac(payload: string, key: string): string {
   return createHmac("sha256", key).update(payload, "utf-8").digest("hex");
 }
 
@@ -85,7 +86,8 @@ export async function writePermissionRequest(
   output.hmac = computeHmac(canonical, hmacKey);
 
   const data = JSON.stringify(output, null, 2);
-  const filename = `${receivedAt}-permission_request-${nonce.slice(0, 8)}.json`;
+  const safeTimestamp = receivedAt.replace(/:/g, "-");
+  const filename = `${safeTimestamp}-permission_request-${nonce.slice(0, 8)}.json`;
   const finalPath = join(outboxPath, filename);
   const tmpPath = join(outboxPath, `.tmp-${nonce}.json`);
 

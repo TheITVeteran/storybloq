@@ -5,8 +5,8 @@
  * validates them, and sends them as MCP channel notifications to Claude Code.
  */
 import { watch, type FSWatcher } from "node:fs";
-import { readdir, readFile, unlink, rename, mkdir, stat } from "node:fs/promises";
-import { join, basename } from "node:path";
+import { readdir, readFile, unlink, rename, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ChannelEventSchema, isValidInboxFilename, formatChannelContent, formatChannelMeta } from "./events.js";
 
@@ -15,8 +15,10 @@ const FAILED_DIR = ".failed";
 const MAX_INBOX_DEPTH = 50;
 const MAX_FAILED_FILES = 20;
 const DEBOUNCE_MS = 100;
+const MAX_PERMISSION_RETRIES = 15;
 
 let watcher: FSWatcher | null = null;
+const permissionRetryCount = new Map<string, number>();
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -25,6 +27,13 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
  */
 export async function startInboxWatcher(root: string, server: McpServer): Promise<void> {
   const inboxPath = join(root, ".story", INBOX_DIR);
+
+  // Close existing watcher if called again (prevents FSWatcher leak)
+  if (watcher) {
+    watcher.close();
+    watcher = null;
+    permissionRetryCount.clear();
+  }
 
   // Ensure inbox directory exists
   await mkdir(inboxPath, { recursive: true });
@@ -188,11 +197,21 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
       });
     }
     process.stderr.write(`claudestory: sent channel event ${event.event}\n`);
+    // Clear retry tracking on success
+    permissionRetryCount.delete(filename);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (event.event === "permission_response") {
-      // Permission verdicts must not be silently dropped. Leave file for retry.
-      process.stderr.write(`claudestory: permission notification failed, keeping file for retry: ${msg}\n`);
+      // Permission verdicts must not be silently dropped, but cap retries to prevent inbox stagnation.
+      const retries = (permissionRetryCount.get(filename) ?? 0) + 1;
+      permissionRetryCount.set(filename, retries);
+      if (retries >= MAX_PERMISSION_RETRIES) {
+        process.stderr.write(`claudestory: permission notification failed after ${retries} retries, quarantining: ${msg}\n`);
+        permissionRetryCount.delete(filename);
+        await moveToFailed(inboxPath, filename);
+        return;
+      }
+      process.stderr.write(`claudestory: permission notification failed (attempt ${retries}/${MAX_PERMISSION_RETRIES}), keeping for retry: ${msg}\n`);
       return;
     }
     // Other channel notifications may fail if channels are not available (gated, no OAuth, etc.)
