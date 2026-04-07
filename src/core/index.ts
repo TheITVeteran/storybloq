@@ -29,6 +29,7 @@ export {
   listHandovers,
   readHandover,
   extractHandoverDate,
+  extractHandoverTitle,
 } from "./handover-parser.js";
 export {
   ProjectLoaderError,
