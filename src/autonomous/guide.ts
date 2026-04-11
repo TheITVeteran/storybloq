@@ -497,7 +497,12 @@ async function trySupersedeFinishedOrphan(
   const ok = await isFinishedOrphan(info.state, info.dir, root, ctx);
   if (!ok) return null;
 
-  const expiresAtMs = new Date(info.state.lease.expiresAt).getTime();
+  // ISS-382: explicit narrowing on lease.expiresAt. isOrphanCandidate (called
+  // inside isFinishedOrphan) already guarantees a finite expiresAt here, but
+  // re-validating locally keeps this site robust to upstream refactors.
+  const expiresAtRaw = info.state.lease?.expiresAt;
+  const expiresAtMs = expiresAtRaw ? new Date(expiresAtRaw).getTime() : NaN;
+  if (!Number.isFinite(expiresAtMs)) return null;
   const leaseExpiredMinutesAgo = Math.round((Date.now() - expiresAtMs) / 60000);
 
   // Atomic audit+state write: appends the auto_superseded event with the
