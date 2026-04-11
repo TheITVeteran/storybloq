@@ -43,6 +43,70 @@ export function isOrphanCandidate(state: FullSessionState): boolean {
   return true;
 }
 
+/**
+ * Build a map of issueId → recorded commit hashes from a session's event log,
+ * validating every commit-event payload along the way. Returns null when any
+ * event is malformed or has the wrong shape — fails closed so the caller
+ * treats the session as not-finished rather than silently dropping commits.
+ */
+function buildIssueCommitMap(dir: string): Map<string, string[]> | null {
+  const { events, malformedCount } = readEvents(dir);
+  if (malformedCount > 0) return null;
+  const issueCommits = new Map<string, string[]>();
+  for (const ev of events) {
+    if (ev.type !== "commit") continue;
+    if (!ev.data || typeof ev.data !== "object") return null;
+    const data = ev.data as { commitHash?: unknown; issueId?: unknown; ticketId?: unknown };
+    const hasIssue = "issueId" in data && data.issueId !== undefined;
+    const hasTicket = "ticketId" in data && data.ticketId !== undefined;
+    if (hasIssue) {
+      if (typeof data.commitHash !== "string" || typeof data.issueId !== "string") return null;
+      const list = issueCommits.get(data.issueId) ?? [];
+      list.push(data.commitHash);
+      issueCommits.set(data.issueId, list);
+    } else if (hasTicket) {
+      if (typeof data.commitHash !== "string" || typeof data.ticketId !== "string") return null;
+    }
+  }
+  return issueCommits;
+}
+
+/**
+ * Verify a single target work item (issue or ticket) is finished AND every
+ * recorded commit for it is reachable from headSha. Returns false on any
+ * uncertainty: unknown ID format, missing record, wrong status, or
+ * unreachable commit.
+ */
+async function isTargetFinished(
+  id: string,
+  state: FullSessionState,
+  projectState: LoadedProjectState,
+  issueCommits: Map<string, string[]>,
+  root: string,
+  headSha: string,
+): Promise<boolean> {
+  if (ISSUE_ID_REGEX.test(id)) {
+    const issue = projectState.issues.find((i) => i.id === id);
+    if (!issue || issue.status !== "resolved") return false;
+    const hashes = issueCommits.get(id) ?? [];
+    if (hashes.length === 0) return false;
+    for (const hash of hashes) {
+      const anc = await gitIsAncestor(root, hash, headSha);
+      if (!anc.ok || !anc.data) return false;
+    }
+    return true;
+  }
+  if (TICKET_ID_REGEX.test(id)) {
+    const ticket = projectState.ticketByID(id);
+    if (!ticket || ticket.status !== "complete") return false;
+    const entry = state.completedTickets.find((t) => t.id === id);
+    if (!entry || !entry.commitHash) return false;
+    const anc = await gitIsAncestor(root, entry.commitHash, headSha);
+    return anc.ok && anc.data;
+  }
+  return false;
+}
+
 export async function isFinishedOrphan(
   state: FullSessionState,
   dir: string,
@@ -71,46 +135,13 @@ export async function isFinishedOrphan(
     headSha = headResult.data;
   }
 
-  const issueCommits = new Map<string, string[]>();
-  const { events, malformedCount } = readEvents(dir);
-  if (malformedCount > 0) return false;
-  for (const ev of events) {
-    if (ev.type !== "commit") continue;
-    if (!ev.data || typeof ev.data !== "object") return false;
-    const data = ev.data as { commitHash?: unknown; issueId?: unknown; ticketId?: unknown };
-    const hasIssue = "issueId" in data && data.issueId !== undefined;
-    const hasTicket = "ticketId" in data && data.ticketId !== undefined;
-    if (hasIssue) {
-      if (typeof data.commitHash !== "string" || typeof data.issueId !== "string") return false;
-      const list = issueCommits.get(data.issueId) ?? [];
-      list.push(data.commitHash);
-      issueCommits.set(data.issueId, list);
-    } else if (hasTicket) {
-      if (typeof data.commitHash !== "string" || typeof data.ticketId !== "string") return false;
-    }
-  }
+  const issueCommits = buildIssueCommitMap(dir);
+  if (!issueCommits) return false;
 
   for (const id of state.targetWork) {
-    if (ISSUE_ID_REGEX.test(id)) {
-      const issue = projectState.issues.find((i) => i.id === id);
-      if (!issue || issue.status !== "resolved") return false;
-      const hashes = issueCommits.get(id) ?? [];
-      if (hashes.length === 0) return false;
-      for (const hash of hashes) {
-        const anc = await gitIsAncestor(root, hash, headSha);
-        if (!anc.ok || !anc.data) return false;
-      }
-    } else if (TICKET_ID_REGEX.test(id)) {
-      const ticket = projectState.ticketByID(id);
-      if (!ticket || ticket.status !== "complete") return false;
-      const entry = state.completedTickets.find((t) => t.id === id);
-      if (!entry || !entry.commitHash) return false;
-      const anc = await gitIsAncestor(root, entry.commitHash, headSha);
-      if (!anc.ok || !anc.data) return false;
-    } else {
+    if (!(await isTargetFinished(id, state, projectState, issueCommits, root, headSha))) {
       return false;
     }
   }
-
   return true;
 }
