@@ -29,11 +29,11 @@ import {
   readSession,
   type ActiveSessionInfo,
 } from "./session.js";
-import { isFinishedOrphan } from "./orphan-detector.js";
+import { isFinishedOrphan, isOrphanCandidate, type OrphanCheckContext } from "./orphan-detector.js";
 import { assertTransition } from "./state-machine.js";
 import { evaluatePressure } from "./context-pressure.js";
 import { assessRisk, requiredRounds, nextReviewer } from "./review-depth.js";
-import { gitHead, gitStatus, gitMergeBase, gitDiffStat, gitDiffNames, gitDiffCachedNames, gitBlobHash, gitStash, gitStashPop, gitIsAncestor } from "./git-inspector.js";
+import { gitHead, gitHeadHash, gitStatus, gitMergeBase, gitDiffStat, gitDiffNames, gitDiffCachedNames, gitBlobHash, gitStash, gitStashPop, gitIsAncestor } from "./git-inspector.js";
 import { resolveRecipe } from "./recipes/loader.js";
 import { getStage, findNextStage, findFirstPostComplete, findNextPostComplete, type NextStageResult } from "./stages/registry.js";
 import { StageContext, isStageAdvance, type StageAdvance, type StageResult } from "./stages/types.js";
@@ -492,8 +492,9 @@ async function handleGuideInner(root: string, args: GuideInput): Promise<McpTool
 async function trySupersedeFinishedOrphan(
   info: ActiveSessionInfo,
   root: string,
+  ctx?: OrphanCheckContext,
 ): Promise<FullSessionState | null> {
-  const ok = await isFinishedOrphan(info.state, info.dir, root);
+  const ok = await isFinishedOrphan(info.state, info.dir, root, ctx);
   if (!ok) return null;
 
   const expiresAtMs = new Date(info.state.lease.expiresAt).getTime();
@@ -604,10 +605,27 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
   // the rich terminationReason. Second pass re-reads state via readSession to
   // avoid clobbering that reason with a pre-supersede snapshot when the
   // generic fallback runs on entries the orphan pass left alone.
+  // ISS-383: hoist loadProject + git rev-parse out of the per-session loop.
+  // The cheap isOrphanCandidate precheck filters out sessions that can't
+  // possibly be finished orphans (wrong mode, no targetWork, lease still
+  // fresh) so we only pay the load cost when at least one candidate exists.
   const staleSessions = findStaleSessions(root);
+  let staleOrphanCtx: OrphanCheckContext | undefined;
+  if (staleSessions.some((s) => isOrphanCandidate(s.state))) {
+    try {
+      const { state: projectState } = await loadProject(root);
+      const headResult = await gitHeadHash(root);
+      if (headResult.ok) {
+        staleOrphanCtx = { projectState, headSha: headResult.data };
+      }
+    } catch {
+      // Fall through with undefined ctx — trySupersedeFinishedOrphan will
+      // load on demand per session, matching pre-ISS-383 behavior.
+    }
+  }
   const autoSupersededIds = new Set<string>();
   for (const stale of staleSessions) {
-    const result = await trySupersedeFinishedOrphan(stale, root);
+    const result = await trySupersedeFinishedOrphan(stale, root, staleOrphanCtx);
     if (result) autoSupersededIds.add(stale.state.sessionId);
   }
   for (const stale of staleSessions) {

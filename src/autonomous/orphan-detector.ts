@@ -14,29 +14,62 @@ import { TICKET_ID_REGEX, ISSUE_ID_REGEX } from "../models/types.js";
 
 const ORPHAN_LEASE_BUFFER_MS = 60 * 60 * 1000; // 60-minute debris buffer
 
-export async function isFinishedOrphan(
-  state: FullSessionState,
-  dir: string,
-  root: string,
-): Promise<boolean> {
+type LoadedProjectState = Awaited<ReturnType<typeof loadProject>>["state"];
+
+/**
+ * ISS-383: pre-loaded project state + git HEAD hash that callers can hoist out
+ * of a per-session loop to avoid re-running loadProject + git rev-parse on
+ * every iteration. Optional — when omitted, isFinishedOrphan loads on demand
+ * for backward compatibility with single-call sites.
+ */
+export interface OrphanCheckContext {
+  projectState: LoadedProjectState;
+  headSha: string;
+}
+
+/**
+ * Cheap, IO-free precheck. Returns true when this session's metadata SHAPE
+ * (mode, targetWork, lease) is consistent with a finished-orphan candidate.
+ * Use this to filter a stale-session list before paying the loadProject +
+ * git rev-parse cost once for the whole batch.
+ */
+export function isOrphanCandidate(state: FullSessionState): boolean {
   if (state.mode !== "auto") return false;
   if (!state.targetWork || state.targetWork.length === 0) return false;
-
   const expiresAtRaw = state.lease?.expiresAt;
   const expiresAtMs = expiresAtRaw ? new Date(expiresAtRaw).getTime() : NaN;
   if (!Number.isFinite(expiresAtMs)) return false;
   if (Date.now() - expiresAtMs < ORPHAN_LEASE_BUFFER_MS) return false;
+  return true;
+}
 
-  let projectState: Awaited<ReturnType<typeof loadProject>>["state"];
-  try {
-    ({ state: projectState } = await loadProject(root));
-  } catch {
-    return false;
+export async function isFinishedOrphan(
+  state: FullSessionState,
+  dir: string,
+  root: string,
+  ctx?: OrphanCheckContext,
+): Promise<boolean> {
+  if (!isOrphanCandidate(state)) return false;
+
+  let projectState: LoadedProjectState;
+  if (ctx) {
+    projectState = ctx.projectState;
+  } else {
+    try {
+      ({ state: projectState } = await loadProject(root));
+    } catch {
+      return false;
+    }
   }
 
-  const headResult = await gitHeadHash(root);
-  if (!headResult.ok) return false;
-  const headSha = headResult.data;
+  let headSha: string;
+  if (ctx) {
+    headSha = ctx.headSha;
+  } else {
+    const headResult = await gitHeadHash(root);
+    if (!headResult.ok) return false;
+    headSha = headResult.data;
+  }
 
   const issueCommits = new Map<string, string[]>();
   const { events, malformedCount } = readEvents(dir);
