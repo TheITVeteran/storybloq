@@ -110,6 +110,22 @@ describe("Subprocess registry (T-261)", () => {
       expect(existsSync(subprocessesDir(sessionDir))).toBe(true);
     });
 
+    it("uses compact JSON (no pretty-print)", () => {
+      const entry: SubprocessEntry = {
+        pid: 77777,
+        cmd: "node",
+        category: "other",
+        startedAt: "2026-04-11T10:00:00.000Z",
+        stage: "TEST",
+      };
+      registerSubprocess(sessionDir, entry);
+      const raw = readFileSync(join(subprocessesDir(sessionDir), "77777.json"), "utf-8");
+      // Compact JSON: single line with trailing newline, no indentation
+      expect(raw).not.toContain("\n  ");
+      expect(raw.endsWith("\n")).toBe(true);
+      expect(JSON.parse(raw)).toEqual(entry);
+    });
+
     it("overwrites existing file for same PID (re-register)", () => {
       const entry1: SubprocessEntry = {
         pid: 5555,
@@ -230,6 +246,42 @@ describe("Subprocess registry (T-261)", () => {
       expect(existsSync(filePath)).toBe(false);
     });
 
+    // ISS-440: Edge cases for invalid PIDs in JSON files
+    it("prunes pid:0 entries (isPidAlive rejects non-positive)", () => {
+      const dir = subprocessesDir(sessionDir);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "0.json"),
+        JSON.stringify({ pid: 0, cmd: "z", category: "other", startedAt: "2026-01-01T00:00:00Z", stage: "TEST" }) + "\n",
+      );
+
+      const summaries = readSubprocessSummaries(sessionDir);
+      expect(summaries).toHaveLength(0);
+      expect(existsSync(join(dir, "0.json"))).toBe(false);
+    });
+
+    it("prunes pid:-1 entries (isPidAlive rejects negative)", () => {
+      const dir = subprocessesDir(sessionDir);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "-1.json"),
+        JSON.stringify({ pid: -1, cmd: "z", category: "other", startedAt: "2026-01-01T00:00:00Z", stage: "TEST" }) + "\n",
+      );
+
+      const summaries = readSubprocessSummaries(sessionDir);
+      expect(summaries).toHaveLength(0);
+      expect(existsSync(join(dir, "-1.json"))).toBe(false);
+    });
+
+    it("skips entries with missing pid field", () => {
+      const dir = subprocessesDir(sessionDir);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "nopid.json"), JSON.stringify({ category: "other" }) + "\n");
+
+      const summaries = readSubprocessSummaries(sessionDir);
+      expect(summaries).toHaveLength(0);
+    });
+
     it("keeps alive PIDs (current process)", () => {
       const entry: SubprocessEntry = {
         pid: process.pid,
@@ -246,9 +298,11 @@ describe("Subprocess registry (T-261)", () => {
     });
   });
 
-  // ── concurrent registrations ─────────────────────────────────
+  // ── per-PID file isolation ───────────────────────────────────
+  // ISS-441: Renamed from "concurrent registrations" -- the for-loop is sequential.
+  // The test verifies file-per-PID isolation, not true concurrency.
 
-  describe("concurrent registrations", () => {
+  describe("per-PID file isolation", () => {
     it("each PID gets its own file (no lost updates)", () => {
       const pids = [1001, 1002, 1003];
       for (const pid of pids) {
