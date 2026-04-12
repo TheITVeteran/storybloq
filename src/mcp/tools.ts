@@ -10,6 +10,29 @@ import { join } from "node:path";
 import { TARGET_WORK_ID_REGEX } from "../autonomous/session-types.js";
 import { findActiveSessionMinimal, readSession, sessionDir, isLeaseExpired } from "../autonomous/session.js";
 import { touchLastMcpCallFile } from "../autonomous/liveness.js";
+
+// ISS-407: Cache active session dir to avoid O(n) directory scan on every MCP call.
+// Expires after 30s -- long enough to amortize hot-path calls, short enough
+// to detect session transitions within a reasonable window.
+const _SESSION_CACHE_TTL_MS = 30_000;
+let _cachedSessionDir: string | null = null;
+let _cachedSessionAt = 0;
+
+function touchMcpLiveness(pinnedRoot: string): void {
+  const now = Date.now();
+  if (_cachedSessionDir && now - _cachedSessionAt < _SESSION_CACHE_TTL_MS) {
+    touchLastMcpCallFile(_cachedSessionDir);
+    return;
+  }
+  const s = findActiveSessionMinimal(pinnedRoot);
+  if (s) {
+    _cachedSessionDir = sessionDir(pinnedRoot, s.sessionId);
+    _cachedSessionAt = now;
+    touchLastMcpCallFile(_cachedSessionDir);
+  } else {
+    _cachedSessionDir = null;
+  }
+}
 import {
   SUBPROCESS_CATEGORIES,
   sanitizeCmd,
@@ -126,7 +149,7 @@ export async function runMcpReadTool(
   pinnedRoot: string,
   handler: (ctx: CommandContext) => Promise<CommandResult> | CommandResult,
 ): Promise<McpToolResult> {
-  try { const s = findActiveSessionMinimal(pinnedRoot); if (s) touchLastMcpCallFile(sessionDir(pinnedRoot, s.sessionId)); } catch { /* best-effort */ }
+  try { touchMcpLiveness(pinnedRoot); } catch { /* best-effort */ }
   try {
     const { state, warnings } = await loadProject(pinnedRoot);
     const handoversDir = join(pinnedRoot, ".story", "handovers");
@@ -173,7 +196,7 @@ export async function runMcpWriteTool(
   pinnedRoot: string,
   handler: (root: string, format: "md") => Promise<CommandResult>,
 ): Promise<McpToolResult> {
-  try { const s = findActiveSessionMinimal(pinnedRoot); if (s) touchLastMcpCallFile(sessionDir(pinnedRoot, s.sessionId)); } catch { /* best-effort */ }
+  try { touchMcpLiveness(pinnedRoot); } catch { /* best-effort */ }
   try {
     const result = await handler(pinnedRoot, "md");
 
@@ -781,7 +804,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
       action: z.enum(["start", "report", "resume", "pre_compact", "cancel"]).describe("Action to perform"),
       mode: z.enum(["auto", "review", "plan", "guided"]).optional().describe("Execution tier (start action only): auto=full autonomous, review=code review only, plan=plan+review, guided=single ticket"),
       ticketId: z.string().optional().describe("Ticket ID for tiered modes (review, plan, guided). Required for non-auto modes."),
-      targetWork: z.array(z.string().regex(TARGET_WORK_ID_REGEX)).max(50).optional().describe("For start action only: array of T-XXX and ISS-XXX IDs to work on in order. Empty or omitted = standard auto mode."),
+      targetWork: z.array(z.string().regex(TARGET_WORK_ID_REGEX)).max(150).optional().describe("For start action only: array of T-XXX and ISS-XXX IDs to work on in order. Empty or omitted = standard auto mode."),
       report: z.object({
         completedAction: z.string().describe("What was completed"),
         ticketId: z.string().optional().describe("Ticket ID (for ticket_picked)"),

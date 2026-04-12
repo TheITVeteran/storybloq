@@ -57,12 +57,18 @@ export function writeShutdownMarker(sessionDir: string): void {
   }
 }
 
+// ISS-407: Cache known telemetry dirs to skip redundant mkdirSync on hot path.
+const _knownTelemetryDirs = new Set<string>();
+
 export function touchLastMcpCallFile(sessionDir: string): void {
   const tDir = telemetryDirPath(sessionDir);
   const target = join(tDir, "lastMcpCall");
   const tmp = `${target}.${process.pid}.tmp`;
   try {
-    mkdirSync(tDir, { recursive: true });
+    if (!_knownTelemetryDirs.has(tDir)) {
+      mkdirSync(tDir, { recursive: true });
+      _knownTelemetryDirs.add(tDir);
+    }
     writeFileSync(tmp, new Date().toISOString());
     renameSync(tmp, target);
   } catch {
