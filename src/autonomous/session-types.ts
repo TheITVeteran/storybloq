@@ -120,6 +120,40 @@ export interface SessionState {
     readonly workspaceId?: string;
     readonly expiresAt: string;
   };
+  // T-259: Telemetry substrate fields
+  readonly substage?: string | null;
+  readonly substageStartedAt?: string | null;
+  readonly pendingInstruction?: string | null;
+  readonly pendingInstructionSetAt?: string | null;
+  readonly claudeCodeSessionId?: string | null;
+  readonly binaryFingerprint?: { readonly mtime: string; readonly sha256: string } | null;
+  readonly runningSubprocesses?: ReadonlyArray<{
+    readonly pid: number;
+    readonly category: string;
+    readonly startedAt: string;
+    readonly stage: string;
+  }> | null;
+  readonly lastReviewVerdict?: {
+    readonly stage: string;
+    readonly round: number;
+    readonly verdict: string;
+    readonly findingCount: number;
+    readonly criticalCount: number;
+    readonly majorCount: number;
+    readonly suggestionCount: number;
+    readonly durationMs: number;
+    readonly summary: string;
+  } | null;
+  readonly recentDeferrals?: {
+    readonly total: number;
+    readonly critical: number;
+    readonly high: number;
+    readonly medium: number;
+    readonly low: number;
+  } | null;
+  readonly alive?: boolean | null;
+  readonly lastMcpCall?: string | null;
+  readonly healthState?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +177,40 @@ export interface StatusPayloadActive {
   readonly contextPressure: string;
   readonly branch: string | null;
   readonly source: "hook";
+  // T-259: Telemetry substrate fields
+  readonly substage: string | null;
+  readonly substageStartedAt: string | null;
+  readonly pendingInstruction: string | null;
+  readonly pendingInstructionSetAt: string | null;
+  readonly claudeCodeSessionId: string | null;
+  readonly binaryFingerprint: { readonly mtime: string; readonly sha256: string } | null;
+  readonly runningSubprocesses: ReadonlyArray<{
+    readonly pid: number;
+    readonly category: string;
+    readonly startedAt: string;
+    readonly stage: string;
+  }> | null;
+  readonly lastReviewVerdict: {
+    readonly stage: string;
+    readonly round: number;
+    readonly verdict: string;
+    readonly findingCount: number;
+    readonly criticalCount: number;
+    readonly majorCount: number;
+    readonly suggestionCount: number;
+    readonly durationMs: number;
+    readonly summary: string;
+  } | null;
+  readonly recentDeferrals: {
+    readonly total: number;
+    readonly critical: number;
+    readonly high: number;
+    readonly medium: number;
+    readonly low: number;
+  } | null;
+  readonly alive: boolean | null;
+  readonly lastMcpCall: string | null;
+  readonly healthState: string | null;
 }
 
 export interface StatusPayloadInactive {
@@ -496,6 +564,44 @@ export const SessionStateSchema = z.object({
     filed: z.number().default(0),
     lastTelemetryLine: z.number().default(0),
   }).optional(),
+
+  // T-259: Telemetry substrate fields (all nullish for wire + state compat)
+  substage: z.string().nullish(),
+  substageStartedAt: z.string().nullish(),
+  pendingInstruction: z.string().nullish(),
+  pendingInstructionSetAt: z.string().nullish(),
+  claudeCodeSessionId: z.string().nullish(),
+  binaryFingerprint: z.object({
+    mtime: z.string(),
+    sha256: z.string(),
+  }).nullish(),
+  runningSubprocesses: z.array(z.object({
+    pid: z.number(),
+    category: z.string(),
+    startedAt: z.string(),
+    stage: z.string(),
+  })).nullish(),
+  lastReviewVerdict: z.object({
+    stage: z.string(),
+    round: z.number(),
+    verdict: z.string(),
+    findingCount: z.number(),
+    criticalCount: z.number(),
+    majorCount: z.number(),
+    suggestionCount: z.number(),
+    durationMs: z.number(),
+    summary: z.string(),
+  }).nullish(),
+  recentDeferrals: z.object({
+    total: z.number(),
+    critical: z.number(),
+    high: z.number(),
+    medium: z.number(),
+    low: z.number(),
+  }).nullish(),
+  alive: z.boolean().nullish(),
+  lastMcpCall: z.string().nullish(),
+  healthState: z.string().nullish(),
 }).passthrough();
 
 export type FullSessionState = z.infer<typeof SessionStateSchema>;

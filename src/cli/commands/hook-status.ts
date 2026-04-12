@@ -3,11 +3,9 @@ import { join } from "node:path";
 import { discoverProjectRoot } from "../../core/project-root-discovery.js";
 import { STORY_GITIGNORE_ENTRIES } from "../../core/init.js";
 import {
-  deriveClaudeStatus,
-  CURRENT_STATUS_SCHEMA_VERSION,
-  type SessionState,
   type StatusPayload,
 } from "../../autonomous/session-types.js";
+import { buildActivePayload, buildInactivePayload } from "../../autonomous/status-payload.js";
 import { findActiveSessionMinimal } from "../../autonomous/session.js";
 
 // ---------------------------------------------------------------------------
@@ -53,26 +51,11 @@ function atomicWriteSync(targetPath: string, content: string): boolean {
 // ---------------------------------------------------------------------------
 
 function inactivePayload(): StatusPayload {
-  return { schemaVersion: CURRENT_STATUS_SCHEMA_VERSION, sessionActive: false, source: "hook" };
+  return buildInactivePayload();
 }
 
-function activePayload(session: SessionState): StatusPayload {
-  return {
-    schemaVersion: CURRENT_STATUS_SCHEMA_VERSION,
-    sessionActive: true,
-    sessionId: session.sessionId,
-    state: session.state,
-    ticket: session.ticket?.id ?? null,
-    ticketTitle: session.ticket?.title ?? null,
-    risk: session.ticket?.risk ?? null,
-    claudeStatus: deriveClaudeStatus(session.state, session.waitingForRetry),
-    observedAt: new Date().toISOString(),
-    lastGuideCall: session.lastGuideCall ?? null,
-    completedThisSession: session.completedTickets?.map((t) => t.id) ?? [],
-    contextPressure: session.contextPressure?.level ?? "unknown",
-    branch: session.git?.branch ?? null,
-    source: "hook",
-  };
+function activePayload(session: Parameters<typeof buildActivePayload>[0]): StatusPayload {
+  return buildActivePayload(session);
 }
 
 // ---------------------------------------------------------------------------
