@@ -140,6 +140,7 @@ export class SnapshotIntegrityError extends Error {
 
 export interface PreloadedSnapshot {
   readonly snapshotDir: string;
+  readonly snapshotDirReal: string;
   readonly byPath: ReadonlyMap<string, ReviewSnapshotManifestFileEntry>;
 }
 
@@ -184,7 +185,18 @@ export function loadSnapshot(ctx: SnapshotContext): PreloadedSnapshot {
   const byPath = new Map<string, ReviewSnapshotManifestFileEntry>();
   for (const entry of manifest.files) byPath.set(entry.path, entry);
 
-  return { snapshotDir, byPath };
+  // Cache realpathSync(snapshotDir) once instead of per evidence item (ISS-394).
+  let snapshotDirReal: string;
+  try {
+    snapshotDirReal = realpathSync(snapshotDir);
+  } catch (err) {
+    throw new SnapshotIntegrityError(
+      "manifest_load_failed",
+      `cannot resolve snapshot root realpath: ${(err as Error).message}`,
+    );
+  }
+
+  return { snapshotDir, snapshotDirReal, byPath };
 }
 
 // ── Public helpers ──────────────────────────────────────────────────
@@ -237,7 +249,7 @@ export function verifyLensFindingPreloaded(
   const verified: VerifiedEvidence[] = [];
   for (let i = 0; i < finding.evidence.length; i++) {
     const item = finding.evidence[i] as EvidenceItem;
-    const outcome = verifyEvidenceItem(item, snapshot.snapshotDir, snapshot.byPath);
+    const outcome = verifyEvidenceItem(item, snapshot.snapshotDir, snapshot.byPath, snapshot.snapshotDirReal);
     if (outcome.kind === "integrity") {
       throw outcome.error;
     }
@@ -335,6 +347,7 @@ function verifyEvidenceItem(
   evidence: EvidenceItem,
   snapshotDir: string,
   byPath: ReadonlyMap<string, ReviewSnapshotManifestFileEntry>,
+  snapshotDirReal?: string,
 ): EvidenceOutcome {
   // ── Step 1 — path canonicalization ─────────────────────────────
   // 1a. Lexical contract.
@@ -411,18 +424,41 @@ function verifyEvidenceItem(
   }
 
   // Realpath containment (unreachable on standard single-mount-namespace filesystems).
-  const snapshotDirReal = realpathSync(snapshotDir);
-  const snapshotDirRealWithSep = snapshotDirReal.endsWith(sep)
-    ? snapshotDirReal
-    : snapshotDirReal + sep;
-  const realResolved = realpathSync(resolved);
+  // Use cached snapshotDirReal when available (ISS-394); fall back to live call.
+  let dirReal: string;
+  if (snapshotDirReal !== undefined) {
+    dirReal = snapshotDirReal;
+  } else {
+    try {
+      dirReal = realpathSync(snapshotDir);
+    } catch (err) {
+      return integrityOutcome(
+        "payload_escapes_snapshot",
+        `cannot resolve snapshot root realpath: ${(err as Error).message}`,
+        evidence.file,
+      );
+    }
+  }
+  const snapshotDirRealWithSep = dirReal.endsWith(sep)
+    ? dirReal
+    : dirReal + sep;
+  let realResolved: string;
+  try {
+    realResolved = realpathSync(resolved);
+  } catch (err) {
+    return integrityOutcome(
+      "payload_escapes_snapshot",
+      `cannot resolve payload realpath for ${evidence.file}: ${(err as Error).message}`,
+      evidence.file,
+    );
+  }
   if (
     !realResolved.startsWith(snapshotDirRealWithSep) &&
-    realResolved !== snapshotDirReal
+    realResolved !== dirReal
   ) {
     return integrityOutcome(
       "payload_escapes_snapshot",
-      `payload realpath ${realResolved} escapes snapshot root ${snapshotDirReal}`,
+      `payload realpath ${realResolved} escapes snapshot root ${dirReal}`,
       evidence.file,
     );
   }
