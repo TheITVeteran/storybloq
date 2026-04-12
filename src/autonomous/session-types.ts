@@ -541,7 +541,7 @@ export const SessionStateSchema = z.object({
   pipelinePhase: z.enum(["ticket", "postComplete"]).default("ticket"),
 
   // T-188: Targeted auto mode — constrains PICK_TICKET to specific items
-  targetWork: z.array(z.string().regex(TARGET_WORK_ID_REGEX)).max(50).default([]),
+  targetWork: z.array(z.string().regex(TARGET_WORK_ID_REGEX)).max(150).default([]),
 
   // T-124: Test stage baseline and retry tracking
   testBaseline: z.object({
@@ -622,6 +622,9 @@ export const SessionStateSchema = z.object({
 }).passthrough();
 
 export type FullSessionState = z.infer<typeof SessionStateSchema>;
+
+/** ISS-400: Named type for verification counters, derived from the Zod schema. */
+export type VerificationCounters = NonNullable<FullSessionState["verificationCounters"]>;
 
 // ---------------------------------------------------------------------------
 // Guide input (from MCP tool call)

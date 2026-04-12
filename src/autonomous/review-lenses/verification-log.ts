@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 
 import type { LensFinding } from "./types.js";
 import type { VerifyFail } from "./verification.js";
+import type { VerificationCounters } from "../session-types.js";
 import { normalizeForVerification } from "./verification.js";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -86,13 +87,7 @@ export function buildRejectionEntry(
 
 export function accumulateVerificationCounters(ctx: {
   sessionDir: string;
-  state: { verificationCounters?: {
-    proposed: number;
-    verified: number;
-    rejected: number;
-    filed: number;
-    lastTelemetryLine: number;
-  } };
+  state: { verificationCounters?: VerificationCounters };
   writeState: (updates: Record<string, unknown>) => unknown;
 }): void {
   const telemetryPath = join(ctx.sessionDir, "verification-telemetry.jsonl");
