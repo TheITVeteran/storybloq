@@ -780,11 +780,21 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
   const dir = sessionDir(root, session.sessionId);
   let sidecarPid: number | undefined;
 
+  // ISS-412: Cleanup helper for early-exit error paths.
+  // Handles sidecar teardown when spawned, plus session directory removal.
+  const abortSession = (): void => {
+    if (sidecarPid !== undefined) {
+      killSidecar(sidecarPid);
+      writeShutdownMarker(dir);
+    }
+    deleteSession(root, session.sessionId);
+  };
+
   try {
     // Check git state
     const headResult = await gitHead(root);
     if (!headResult.ok) {
-      deleteSession(root, session.sessionId);
+      abortSession();
       return guideError(new Error("This directory is not a git repository or git is not available. Autonomous mode requires git."));
     }
 
@@ -792,7 +802,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     if (mode !== "review") {
       const stagedResult = await gitDiffCachedNames(root);
       if (stagedResult.ok && stagedResult.data.length > 0) {
-        deleteSession(root, session.sessionId);
+        abortSession();
         return guideError(new Error(
           `Cannot start: ${stagedResult.data.length} staged file(s). Unstage with \`git restore --staged .\` or commit them first, then call start again.\n\nStaged: ${stagedResult.data.join(", ")}`,
         ));
@@ -833,7 +843,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         const stashMessage = `claudestory-auto-${session.sessionId}`;
         const stashResult = await gitStash(root, stashMessage);
         if (!stashResult.ok) {
-          deleteSession(root, session.sessionId);
+          abortSession();
           return guideError(new Error(
             `Cannot auto-stash dirty files: ${stashResult.message}. ` +
             `Stash or commit changes manually, then call start again.`,
@@ -843,7 +853,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         autoStashRef = { ref: stashResult.data, stashedAt: new Date().toISOString() };
       } else {
         // "block" (default) — existing behavior
-        deleteSession(root, session.sessionId);
+        abortSession();
         const dirtyFiles = Object.keys(dirtyTracked).join(", ");
         return guideError(new Error(
           `Cannot start: ${Object.keys(dirtyTracked).length} dirty tracked file(s): ${dirtyFiles}. ` +
@@ -901,14 +911,14 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       const effectiveWriteCmd = writeTestsCommand ?? testStageCommand ?? "npm test";
       const effectiveTestCmd = testStageCommand ?? "npm test";
       if (testEnabled && writeTestsEnabled && effectiveWriteCmd !== effectiveTestCmd) {
-        deleteSession(root, session.sessionId);
+        abortSession();
         return guideError(new Error(
           `WRITE_TESTS and TEST stages use different commands ("${effectiveWriteCmd}" vs "${effectiveTestCmd}"). ` +
           `They share a single test baseline, so commands must match. Use the same command for both or disable one.`,
         ));
       }
       if (!testCommand) {
-        deleteSession(root, session.sessionId);
+        abortSession();
         return guideError(new Error("TEST/WRITE_TESTS stage is enabled but no test command is configured. Set stages.TEST.command or stages.WRITE_TESTS.command in config.json recipeOverrides or the recipe file."));
       }
       // Capture baseline
@@ -937,7 +947,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
 
         // T-139: WRITE_TESTS requires parseable baseline — fail fast if not available
         if (writeTestsEnabled && failCount < 0) {
-          deleteSession(root, session.sessionId);
+          abortSession();
           return guideError(new Error(
             "WRITE_TESTS stage is enabled but test baseline could not parse fail counts from test output. " +
             "Configure a test reporter that outputs pass/fail counts, or disable WRITE_TESTS.",
@@ -946,7 +956,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       } catch {
         // Non-blocking for TEST-only. But WRITE_TESTS requires baseline.
         if (writeTestsEnabled) {
-          deleteSession(root, session.sessionId);
+          abortSession();
           return guideError(new Error(
             "WRITE_TESTS stage is enabled but test baseline capture failed. Ensure the test command runs successfully.",
           ));
@@ -960,18 +970,18 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       const startCmd = (verifyConfig.startCommand as string | undefined) ?? "npm run dev";
       const readinessUrl = verifyConfig.readinessUrl as string | undefined;
       if (!startCmd.trim()) {
-        deleteSession(root, session.sessionId);
+        abortSession();
         return guideError(new Error("VERIFY stage is enabled but stages.VERIFY.startCommand is empty."));
       }
       if (readinessUrl) {
         try {
           const parsed = new URL(readinessUrl);
           if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-            deleteSession(root, session.sessionId);
+            abortSession();
             return guideError(new Error(`VERIFY stage readinessUrl must be localhost. Got: "${readinessUrl}".`));
           }
         } catch {
-          deleteSession(root, session.sessionId);
+          abortSession();
           return guideError(new Error(`VERIFY stage readinessUrl is not a valid URL: "${readinessUrl}".`));
         }
       }
@@ -1034,8 +1044,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     if (mode !== "auto" && args.ticketId) {
       const ticket = projectState.ticketByID(args.ticketId);
       if (!ticket) {
-        killSidecar(sidecarPid); writeShutdownMarker(dir);
-        deleteSession(root, session.sessionId);
+        abortSession();
         return guideError(new Error(`Ticket ${args.ticketId} not found.`));
       }
 
@@ -1043,13 +1052,11 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       if (mode !== "review") {
         // review mode allows any ticket status — user already has code
         if (ticket.status === "complete") {
-          killSidecar(sidecarPid); writeShutdownMarker(dir);
-          deleteSession(root, session.sessionId);
+          abortSession();
           return guideError(new Error(`Ticket ${args.ticketId} is already complete.`));
         }
         if (projectState.isBlocked(ticket)) {
-          killSidecar(sidecarPid); writeShutdownMarker(dir);
-          deleteSession(root, session.sessionId);
+          abortSession();
           return guideError(new Error(`Ticket ${args.ticketId} is blocked by: ${ticket.blockedBy.join(", ")}.`));
         }
       }
@@ -1063,8 +1070,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
           // Block only if claiming session exists, is active, and lease is not expired
           // TOCTOU: cooperative check — filesystem-based concurrency, sufficient for this use case
           if (claimingSession && claimingSession.state.status === "active" && !isLeaseExpired(claimingSession.state)) {
-            killSidecar(sidecarPid); writeShutdownMarker(dir);
-            deleteSession(root, session.sessionId);
+            abortSession();
             return guideError(new Error(
               `Ticket ${args.ticketId} is claimed by active session ${claimId}. ` +
               `Wait for it to finish or stop it with "claudestory session stop ${claimId}".`,
@@ -1316,8 +1322,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
 
   } catch (err) {
     // Cleanup on failure
-    killSidecar(sidecarPid); writeShutdownMarker(dir);
-    deleteSession(root, session.sessionId);
+    abortSession();
     throw err;
   }
 }
