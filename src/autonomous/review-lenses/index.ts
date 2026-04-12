@@ -43,6 +43,18 @@ export {
 } from "./cache.js";
 export { buildLensPrompt, getLensVersion } from "./lenses/index.js";
 export { compareResults, formatEvaluationReport } from "./evaluation.js";
+export {
+  writeReviewSnapshot,
+  readReviewSnapshotManifest,
+  archiveReviewSnapshot,
+} from "./review-snapshot.js";
+export type {
+  ReviewSnapshotInput,
+  ReviewSnapshotManifest,
+  ReviewSnapshotManifestFileEntry,
+  WriteReviewSnapshotResult,
+  ArchiveReviewSnapshotResult,
+} from "./review-snapshot.js";
 
 export type {
   LensFinding,
