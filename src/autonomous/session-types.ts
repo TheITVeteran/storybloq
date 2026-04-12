@@ -213,12 +213,14 @@ export interface StatusPayloadActive {
   readonly alive: boolean | null;
   readonly lastMcpCall: string | null;
   readonly healthState: string | null;
+  readonly lastWrittenBy?: "hook" | "guide";
 }
 
 export interface StatusPayloadInactive {
   readonly schemaVersion: typeof CURRENT_STATUS_SCHEMA_VERSION;
   readonly sessionActive: false;
   readonly source: "hook";
+  readonly lastWrittenBy?: "hook" | "guide";
 }
 
 export type StatusPayload = StatusPayloadActive | StatusPayloadInactive;

@@ -56,6 +56,7 @@ import { nextTickets } from "../core/queries.js";
 import { recommend, type RecommendOptions } from "../core/recommend.js";
 import { checkVersionMismatch, getInstalledVersion, getRunningVersion } from "./version-check.js";
 import { writeResumeMarker, removeResumeMarker } from "./resume-marker.js";
+import { refreshStatusForSession, isSessionActiveForStatus } from "./status-writer.js";
 import { formatCompactReport } from "../core/session-report-formatter.js";
 import { isTargetedMode, getRemainingTargets, buildTargetedCandidatesText, buildTargetedPickInstruction, buildTargetedStuckHandover } from "./target-work.js";
 import {
@@ -63,6 +64,25 @@ import {
   handleHandoverCreate,
 } from "../cli/commands/handover.js";
 import type { CommandContext } from "../cli/types.js";
+
+// ---------------------------------------------------------------------------
+// Guide-side write + status refresh wrapper
+// ---------------------------------------------------------------------------
+
+type RefreshMode = "always" | "if-active" | "never";
+
+function writeSessionAndRefresh(
+  root: string,
+  dir: string,
+  state: FullSessionState,
+  mode: RefreshMode = "if-active",
+): FullSessionState {
+  const written = writeSessionSync(dir, state);
+  if (mode === "never") return written;
+  if (mode === "if-active" && !isSessionActiveForStatus(written)) return written;
+  try { refreshStatusForSession(root, dir, written, "guide"); } catch { /* best-effort */ }
+  return written;
+}
 
 // ---------------------------------------------------------------------------
 // Recovery mapping — exported for test completeness checks (ISS-040)
@@ -248,7 +268,7 @@ async function recoverPendingMutation(
       }
     } catch { /* best-effort -- leave marker cleared regardless */ }
     const cleared = { ...state, pendingProjectMutation: null };
-    return writeSessionSync(dir, cleared);
+    return writeSessionAndRefresh(root, dir, cleared, "if-active");
   }
 
   if (m.type !== "ticket_update") return state;
@@ -283,7 +303,7 @@ async function recoverPendingMutation(
           timestamp: new Date().toISOString(),
           data: { targetId, expected: expectedCurrent, actual: ticket.status, transitionId: m.transitionId },
         });
-        writeSessionSync(dir, { ...state, pendingProjectMutation: null });
+        writeSessionAndRefresh(root, dir, { ...state, pendingProjectMutation: null } as FullSessionState, "if-active");
       }
     });
   } catch {
@@ -312,7 +332,7 @@ async function recoverPendingMutation(
     }
   }
 
-  return writeSessionSync(dir, cleared as FullSessionState);
+  return writeSessionAndRefresh(root, dir, cleared as FullSessionState, "if-active");
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +369,7 @@ async function fileDeferredFindings(
   }
 
   // Persist pending entries first (crash-safe: survives before drain attempt)
-  const persisted = writeSessionSync(dir, { ...state, pendingDeferrals: pending } as FullSessionState);
+  const persisted = writeSessionAndRefresh(root, dir, { ...state, pendingDeferrals: pending } as FullSessionState, "if-active");
   let updated = await drainPendingDeferrals(root, dir, persisted);
   return updated;
 }
@@ -399,7 +419,7 @@ async function drainPendingDeferrals(
   }
 
   const updated = { ...state, filedDeferrals: filed, pendingDeferrals: remaining };
-  return writeSessionSync(dir, updated as FullSessionState);
+  return writeSessionAndRefresh(root, dir, updated as FullSessionState, "if-active");
 }
 
 // ---------------------------------------------------------------------------
@@ -648,7 +668,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     if (autoSupersededIds.has(stale.state.sessionId)) continue;
     const current = readSession(stale.dir);
     if (!current || current.status !== "active") continue;
-    writeSessionSync(stale.dir, { ...current, status: "superseded" as const });
+    writeSessionAndRefresh(root, stale.dir, { ...current, status: "superseded" as const } as FullSessionState, "always");
     writeShutdownMarker(stale.dir);
   }
 
@@ -1080,7 +1100,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       updated = refreshLease(updated);
       const pressure = evaluatePressure(updated);
       updated = { ...updated, contextPressure: { ...updated.contextPressure, level: pressure } };
-      const written = writeSessionSync(dir, updated);
+      const written = writeSessionAndRefresh(root, dir, updated, "never");
 
       appendEvent(dir, {
         rev: written.revision,
@@ -1156,7 +1176,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     updated = refreshLease(updated);
     const pressure = evaluatePressure(updated);
     updated = { ...updated, contextPressure: { ...updated.contextPressure, level: pressure } };
-    const written = writeSessionSync(dir, updated);
+    const written = writeSessionAndRefresh(root, dir, updated, "if-active");
 
     appendEvent(dir, {
       rev: written.revision,
@@ -1574,10 +1594,10 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
   // Note: missing expectedHead with working git → skip validation (Branch A, backward compat)
   if (!headResult.ok) {
     // Keep compactPending — session must remain discoverable
-    const blockedState = writeSessionSync(info.dir, {
+    const blockedState = writeSessionAndRefresh(root, info.dir, {
       ...refreshLease(info.state),
       resumeBlocked: true,
-    });
+    } as FullSessionState, "always");
     appendEvent(info.dir, {
       rev: blockedState.revision,
       type: "resume_blocked",
@@ -1626,7 +1646,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       ? { ...info.state.ticket, realizedRisk: undefined, lastPlanHash: undefined }
       : undefined;
 
-    const driftWritten = writeSessionSync(info.dir, {
+    const driftWritten = writeSessionAndRefresh(root, info.dir, {
       ...refreshLease(info.state),
       state: mapping.state,
       previousState: "COMPACT",
@@ -1642,7 +1662,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       contextPressure: { ...info.state.contextPressure, guideCallCount: 0, compactionCount: (info.state.contextPressure?.compactionCount ?? 0) + 1 },
       git: { ...info.state.git, expectedHead: headResult.data.hash, mergeBase: headResult.data.hash },
       sidecarPid: resumeSidecarPid,
-    });
+    } as FullSessionState, "always");
 
     appendEvent(info.dir, {
       rev: driftWritten.revision,
@@ -1785,7 +1805,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
     guideCallCount: 0,
     compactionCount: (info.state.contextPressure?.compactionCount ?? 0) + 1,
   };
-  const written = writeSessionSync(info.dir, {
+  const written = writeSessionAndRefresh(root, info.dir, {
     ...refreshLease(info.state),
     state: resumeState,
     preCompactState: null,
@@ -1798,7 +1818,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
     // T-184: Update expectedHead on own-commit drift (mergeBase stays at branch-off point)
     ...(ownCommitDrift ? { git: { ...info.state.git, expectedHead: headResult.data.hash } } : {}),
     sidecarPid: resumeSidecarPid,
-  });
+  } as FullSessionState, "always");
   appendEvent(info.dir, {
     rev: written.revision,
     type: "resumed",
@@ -2088,7 +2108,7 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
     if (!popResult.ok) stashPopFailed = true;
   }
 
-  const written = writeSessionSync(cancelInfo.dir, {
+  const written = writeSessionAndRefresh(root, cancelInfo.dir, {
     ...cancelInfo.state,
     state: "SESSION_END",
     previousState: cancelInfo.state.state,
@@ -2098,7 +2118,7 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
     compactPreparedAt: null,
     resumeBlocked: false,
     ticket: undefined,
-  });
+  } as FullSessionState, "always");
   // T-260: Same-process finalization (after state write succeeds)
   try { killSidecar(cancelInfo.state.sidecarPid); } catch { /* best-effort */ }
   try { writeShutdownMarker(cancelInfo.dir); } catch { /* best-effort */ }
@@ -2161,6 +2181,7 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
 
 /** Validate transition + write state atomically. Returns the written state with updated revision. */
 function transitionAndWrite(
+  root: string,
   dir: string,
   state: FullSessionState,
   to: WorkflowState,
@@ -2170,7 +2191,7 @@ function transitionAndWrite(
     assertTransition(from, to);
   }
   const updated = { ...state, state: to, previousState: from };
-  return writeSessionSync(dir, updated);
+  return writeSessionAndRefresh(root, dir, updated, "always");
 }
 
 // ---------------------------------------------------------------------------

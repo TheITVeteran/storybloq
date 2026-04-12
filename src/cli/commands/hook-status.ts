@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { discoverProjectRoot } from "../../core/project-root-discovery.js";
 import { STORY_GITIGNORE_ENTRIES } from "../../core/init.js";
@@ -9,6 +9,7 @@ import { buildActivePayload, buildInactivePayload } from "../../autonomous/statu
 import { findActiveSessionMinimal, sessionDir } from "../../autonomous/session.js";
 import { readLastMcpCall, readAliveTimestamp } from "../../autonomous/liveness.js";
 import { readSubprocessSummaries } from "../../autonomous/subprocess-registry.js";
+import { writeStatusFile } from "../../autonomous/status-writer.js";
 
 // ---------------------------------------------------------------------------
 // Stdin reading — silent version (no throws, no validation)
@@ -25,26 +26,6 @@ async function readStdinSilent(): Promise<string | null> {
     ).toString("utf-8");
   } catch {
     return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Atomic write (sync) — silent, never throws
-// ---------------------------------------------------------------------------
-
-function atomicWriteSync(targetPath: string, content: string): boolean {
-  const tmp = `${targetPath}.${process.pid}.tmp`;
-  try {
-    writeFileSync(tmp, content, "utf-8");
-    renameSync(tmp, targetPath);
-    return true;
-  } catch {
-    try {
-      unlinkSync(tmp);
-    } catch {
-      /* ignore cleanup errors */
-    }
-    return false;
   }
 }
 
@@ -102,9 +83,8 @@ function ensureGitignore(root: string): void {
 
 function writeStatus(root: string, payload: StatusPayload): void {
   ensureGitignore(root);
-  const statusPath = join(root, ".story", "status.json");
-  const content = JSON.stringify(payload, null, 2) + "\n";
-  atomicWriteSync(statusPath, content);
+  const withWriter = { ...payload, lastWrittenBy: "hook" as const };
+  writeStatusFile(root, withWriter as StatusPayload);
 }
 
 // ---------------------------------------------------------------------------

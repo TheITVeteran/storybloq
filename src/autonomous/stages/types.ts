@@ -5,6 +5,7 @@ import type {
 import { writeSessionSync, appendEvent } from "../session.js";
 import { killSidecar, writeShutdownMarker } from "../liveness.js";
 import { writeEvent, markEnded } from "../telemetry-writer.js";
+import { refreshStatusForSession } from "../status-writer.js";
 import { loadProject } from "../../core/project-loader.js";
 import type { ProjectState } from "../../core/project-state.js";
 
@@ -97,10 +98,13 @@ export class StageContext {
    * Write state updates atomically. Returns the written state with incremented revision.
    * Updates the internal snapshot so subsequent reads via `this.state` are consistent.
    */
-  writeState(updates: Partial<FullSessionState>): FullSessionState {
+  writeState(updates: Partial<FullSessionState>, opts?: { refreshStatus?: boolean }): FullSessionState {
     const merged = { ...this._state, ...updates } as FullSessionState;
     const written = writeSessionSync(this.dir, merged);
     this._state = written;
+    if (opts?.refreshStatus) {
+      try { refreshStatusForSession(this.root, this.dir, written, "guide"); } catch { /* best-effort */ }
+    }
     return written;
   }
 
