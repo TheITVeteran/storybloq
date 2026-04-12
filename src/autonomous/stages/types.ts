@@ -4,6 +4,7 @@ import type {
 } from "../session-types.js";
 import { writeSessionSync, appendEvent } from "../session.js";
 import { killSidecar, writeShutdownMarker } from "../liveness.js";
+import { writeEvent, markEnded } from "../telemetry-writer.js";
 import { loadProject } from "../../core/project-loader.js";
 import type { ProjectState } from "../../core/project-state.js";
 
@@ -107,22 +108,39 @@ export class StageContext {
    * T-260: Terminal transition with sidecar cleanup.
    * Persists state first, then kills sidecar and writes shutdown marker (best-effort).
    */
-  finalizeSession(updates: Partial<FullSessionState>): FullSessionState {
+  finalizeSession(updates: Partial<FullSessionState>, terminalData?: Record<string, unknown>): FullSessionState {
     const pidToKill = this._state.sidecarPid;
     const written = this.writeState(updates);
     try { killSidecar(pidToKill); } catch { /* best-effort */ }
     try { writeShutdownMarker(this.dir); } catch { /* best-effort */ }
+    const reason = (updates as Record<string, unknown>).terminationReason as string ?? "normal";
+    writeEvent(this.dir, {
+      ts: new Date().toISOString(),
+      layer: "guide",
+      type: "session_end",
+      data: {
+        reason,
+        ticketsCompleted: written.completedTickets?.length ?? 0,
+        issuesResolved: (written.resolvedIssues as unknown[] | undefined)?.length ?? 0,
+        ...terminalData,
+      },
+    });
+    markEnded(this.dir, reason);
     return written;
   }
 
-  /** Append a supplementary event to events.log. */
+  /** Append a supplementary event to events.log and mirror to events.jsonl. */
   appendEvent(type: string, data: Record<string, unknown>): void {
+    const ts = new Date().toISOString();
     appendEvent(this.dir, {
       rev: this._state.revision,
       type,
-      timestamp: new Date().toISOString(),
+      timestamp: ts,
       data,
     });
+    if (type !== "session_end" && type !== "session_cancelled") {
+      writeEvent(this.dir, { ts, layer: "guide", type, data });
+    }
   }
 
   /** Load the .story/ project state (tickets, issues, roadmap). */

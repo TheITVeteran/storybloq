@@ -46,6 +46,7 @@ import { resolveRecipe } from "./recipes/loader.js";
 import { getStage, findNextStage, findFirstPostComplete, findNextPostComplete, type NextStageResult } from "./stages/registry.js";
 import { StageContext, isStageAdvance, type StageAdvance, type StageResult } from "./stages/types.js";
 import "./stages/index.js"; // Register all extracted stages
+import { writeEvent, writeCheckpoint, markEnded, type TelemetryLayer } from "./telemetry-writer.js";
 
 import { loadProject } from "../core/project-loader.js";
 import { buildLessonDigest } from "../core/lessons.js";
@@ -1087,6 +1088,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         timestamp: new Date().toISOString(),
         data: { recipe, branch: written.git.branch, head: written.git.initHead, mode, ticketId: args.ticketId },
       });
+      emitTelemetry(dir, "session_start", "guide", { recipe, branch: written.git.branch, mode, ticketId: args.ticketId });
 
       const modeLabels: Record<string, string> = {
         review: "Review Mode",
@@ -1162,6 +1164,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       timestamp: new Date().toISOString(),
       data: { recipe, branch: written.git.branch, head: written.git.initHead, mode: "auto", ...(validatedTargetWork.length > 0 ? { targetWork: validatedTargetWork } : {}) },
     });
+    emitTelemetry(dir, "session_start", "guide", { recipe, branch: written.git.branch, mode: "auto" });
 
     const maxTickets = updated.config.maxTicketsPerSession;
     const interval = updated.config.handoverInterval ?? 3;
@@ -1404,6 +1407,7 @@ async function processAdvance(
       assertTransition(currentStage.id as WorkflowState, nextStage.id as WorkflowState);
       ctx.writeState({ state: nextStage.id, previousState: currentStage.id });
       ctx.appendEvent("transition", { from: currentStage.id, to: nextStage.id });
+      writeCheckpoint(ctx.dir, nextStage.id, ctx.state as unknown as Record<string, unknown>, ctx.state.revision);
       const enterResult = "result" in advance && advance.result
         ? advance.result
         : await nextStage.enter(ctx);
@@ -1432,6 +1436,7 @@ async function processAdvance(
       assertTransition(currentStage.id as WorkflowState, target as WorkflowState);
       ctx.writeState({ state: target, previousState: currentStage.id });
       ctx.appendEvent("transition", { from: currentStage.id, to: target, action: advance.action });
+      writeCheckpoint(ctx.dir, target, ctx.state as unknown as Record<string, unknown>, ctx.state.revision);
       const enterResult = "result" in advance && advance.result
         ? advance.result
         : await targetStage.enter(ctx);
@@ -1806,6 +1811,10 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
       ownCommit: ownCommitDrift || undefined,
     },
   });
+  emitTelemetry(info.dir, "session_resumed", "guide", {
+    preCompactState: resumeState,
+    compactionCount: written.contextPressure?.compactionCount ?? 0,
+  });
   removeResumeMarker(root);
 
   // If resuming at PICK_TICKET, load candidates and give directive instructions
@@ -2106,6 +2115,21 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
       stashPopFailed,
     },
   });
+  postStateWrite(cancelInfo.dir, {
+    event: {
+      type: "session_cancelled",
+      layer: "guide",
+      data: {
+        previousState: cancelInfo.state.state,
+        reason: "cancelled",
+        ticketId: ticketId ?? null,
+        ticketReleased,
+        ticketConflict,
+        stashPopFailed,
+      },
+    },
+    ended: { reason: "cancelled" },
+  });
 
   // T-183: Clean resume marker
   removeResumeMarker(root);
@@ -2147,6 +2171,24 @@ function transitionAndWrite(
   }
   const updated = { ...state, state: to, previousState: from };
   return writeSessionSync(dir, updated);
+}
+
+// ---------------------------------------------------------------------------
+// T-262: Telemetry helpers -- called AFTER state persistence completes
+// ---------------------------------------------------------------------------
+
+function emitTelemetry(dir: string, type: string, layer: TelemetryLayer, data: Record<string, unknown>): void {
+  writeEvent(dir, { ts: new Date().toISOString(), layer, type, data });
+}
+
+function postStateWrite(dir: string, opts: {
+  event?: { type: string; layer: TelemetryLayer; data: Record<string, unknown> };
+  checkpoint?: { stage: string; state: Record<string, unknown>; revision: number };
+  ended?: { reason: string };
+}): void {
+  if (opts.event) emitTelemetry(dir, opts.event.type, opts.event.layer, opts.event.data);
+  if (opts.checkpoint) writeCheckpoint(dir, opts.checkpoint.stage, opts.checkpoint.state as Record<string, unknown>, opts.checkpoint.revision);
+  if (opts.ended) markEnded(dir, opts.ended.reason);
 }
 
 function guideResult(
