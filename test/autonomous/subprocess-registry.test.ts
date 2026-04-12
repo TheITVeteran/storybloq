@@ -211,7 +211,9 @@ describe("Subprocess registry (T-261)", () => {
     });
 
     it("prunes dead PIDs and deletes their files", () => {
-      const deadPid = 2147483646;
+      // ISS-437: Use PID_MAX (kernel-enforced max on Linux/macOS) minus 1.
+      // No real process will hold this PID during a test run.
+      const deadPid = 4194303;
       const entry: SubprocessEntry = {
         pid: deadPid,
         cmd: "ghost",
