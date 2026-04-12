@@ -1,15 +1,21 @@
 /**
  * MCP tool registration and shared pipeline for claudestory tools.
  *
- * 30 tools (20 read + 10 write). Read tools use a shared pipeline:
+ * 32 tools (20 read + 12 write). Read tools use a shared pipeline:
  *   loadProject(root) → build CommandContext → call handler → classify result
  */
 import { z } from "zod";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { TARGET_WORK_ID_REGEX } from "../autonomous/session-types.js";
-import { findActiveSessionMinimal, sessionDir } from "../autonomous/session.js";
+import { findActiveSessionMinimal, readSession, sessionDir, isLeaseExpired } from "../autonomous/session.js";
 import { touchLastMcpCallFile } from "../autonomous/liveness.js";
+import {
+  SUBPROCESS_CATEGORIES,
+  sanitizeCmd,
+  registerSubprocess,
+  unregisterSubprocess,
+} from "../autonomous/subprocess-registry.js";
 import { handlePrepare, handleSynthesize, handleJudge } from "../autonomous/review-lenses/mcp-handlers.js";
 import { validateCachedFindings } from "../autonomous/review-lenses/schema-validator.js";
 import type { LensFinding } from "../autonomous/review-lenses/types.js";
@@ -709,6 +715,60 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
         content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
         isError: true,
       };
+    }
+  });
+
+  // --- Subprocess registry (T-261) ---
+
+  server.registerTool("claudestory_register_subprocess", {
+    description: "Register a running subprocess so monitors can distinguish slow builds from hung agents. Writes a per-PID file under the session's telemetry directory.",
+    inputSchema: {
+      pid: z.number().int().positive().describe("Process ID of the subprocess"),
+      cmd: z.string().describe("Command that was run (will be sanitized to executable basename)"),
+      category: z.enum(SUBPROCESS_CATEGORIES).describe("Subprocess category"),
+      sessionId: z.string().uuid().describe("Session ID to register against"),
+    },
+  }, (args) => {
+    try {
+      const sDir = sessionDir(pinnedRoot, args.sessionId);
+      const session = readSession(sDir);
+      if (!session) return { content: [{ type: "text" as const, text: "Error: session not found or corrupt" }], isError: true };
+      if (session.status !== "active") return { content: [{ type: "text" as const, text: `Error: session status is "${session.status}", not "active"` }], isError: true };
+      if (isLeaseExpired(session)) return { content: [{ type: "text" as const, text: "Error: session lease has expired" }], isError: true };
+      if (session.state === "SESSION_END") return { content: [{ type: "text" as const, text: "Error: session is in terminal SESSION_END state" }], isError: true };
+
+      const stage = session.state ?? "unknown";
+      registerSubprocess(sDir, {
+        pid: args.pid,
+        cmd: sanitizeCmd(args.cmd),
+        category: args.category,
+        startedAt: new Date().toISOString(),
+        stage,
+      });
+      return { content: [{ type: "text" as const, text: `Registered subprocess ${args.pid} (${args.category}) for session ${args.sessionId}` }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text" as const, text: `Error registering subprocess: ${msg}` }], isError: true };
+    }
+  });
+
+  server.registerTool("claudestory_unregister_subprocess", {
+    description: "Unregister a subprocess after it completes. Idempotent -- no error if the PID was already unregistered. Relaxed validation: works even on expired/terminal sessions to allow cleanup.",
+    inputSchema: {
+      pid: z.number().int().positive().describe("Process ID to unregister"),
+      sessionId: z.string().uuid().describe("Session ID the subprocess was registered against"),
+    },
+  }, (args) => {
+    try {
+      const sDir = sessionDir(pinnedRoot, args.sessionId);
+      const session = readSession(sDir);
+      if (!session) return { content: [{ type: "text" as const, text: "Error: session not found or corrupt" }], isError: true };
+
+      unregisterSubprocess(sDir, args.pid);
+      return { content: [{ type: "text" as const, text: `Unregistered subprocess ${args.pid} from session ${args.sessionId}` }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text" as const, text: `Error unregistering subprocess: ${msg}` }], isError: true };
     }
   });
 

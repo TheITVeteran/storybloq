@@ -8,7 +8,11 @@ import {
 
 export function buildActivePayload(
   session: SessionState,
-  telemetry?: { lastMcpCall?: string | null; alive?: boolean | null },
+  telemetry?: {
+    lastMcpCall?: string | null;
+    alive?: boolean | null;
+    runningSubprocesses?: ReadonlyArray<{ pid: number; category: string; startedAt: string; stage: string }> | null;
+  },
 ): StatusPayloadActive {
   return {
     schemaVersion: CURRENT_STATUS_SCHEMA_VERSION,
@@ -31,7 +35,7 @@ export function buildActivePayload(
     pendingInstructionSetAt: session.pendingInstructionSetAt ?? null,
     claudeCodeSessionId: session.claudeCodeSessionId ?? null,
     binaryFingerprint: session.binaryFingerprint ?? null,
-    runningSubprocesses: session.runningSubprocesses ?? null,
+    runningSubprocesses: telemetry?.runningSubprocesses ?? session.runningSubprocesses ?? null,
     lastReviewVerdict: session.lastReviewVerdict ?? null,
     recentDeferrals: session.recentDeferrals ?? null,
     alive: telemetry?.alive ?? session.alive ?? null,
