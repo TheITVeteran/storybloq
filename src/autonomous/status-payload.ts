@@ -12,6 +12,7 @@ export function buildActivePayload(
     lastMcpCall?: string | null;
     alive?: boolean | null;
     runningSubprocesses?: ReadonlyArray<{ pid: number; category: string; startedAt: string; stage: string }> | null;
+    healthState?: string | null;
   },
 ): StatusPayloadActive {
   return {
@@ -40,7 +41,7 @@ export function buildActivePayload(
     recentDeferrals: session.recentDeferrals ?? null,
     alive: telemetry?.alive ?? session.alive ?? null,
     lastMcpCall: telemetry?.lastMcpCall ?? session.lastMcpCall ?? null,
-    healthState: session.healthState ?? null,
+    healthState: telemetry?.healthState ?? session.healthState ?? null,
     // T-271: Queue progress
     targetWork: (session.targetWork?.length ?? 0) > 0 ? [...session.targetWork!] : null,
     currentIssue: session.currentIssue

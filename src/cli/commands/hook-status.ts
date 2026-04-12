@@ -10,6 +10,7 @@ import { findActiveSessionMinimal, sessionDir } from "../../autonomous/session.j
 import { readLastMcpCall, readAliveTimestamp } from "../../autonomous/liveness.js";
 import { readSubprocessSummaries } from "../../autonomous/subprocess-registry.js";
 import { writeStatusFile } from "../../autonomous/status-writer.js";
+import { collectProbes, reduceHealthState } from "../../autonomous/health-model.js";
 
 // ---------------------------------------------------------------------------
 // Stdin reading — silent version (no throws, no validation)
@@ -42,10 +43,13 @@ function activePayload(session: Parameters<typeof buildActivePayload>[0], root: 
   const lastMcpCall = readLastMcpCall(sDir);
   const aliveTs = readAliveTimestamp(sDir);
   const subprocesses = readSubprocessSummaries(sDir);
+  const probes = collectProbes(sDir);
+  const healthState = reduceHealthState(probes);
   return buildActivePayload(session, {
     lastMcpCall,
     alive: aliveTs !== null,
     runningSubprocesses: subprocesses.length > 0 ? subprocesses : null,
+    healthState,
   });
 }
 
