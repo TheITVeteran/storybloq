@@ -110,24 +110,16 @@ describe("handleSynthesize verification gate", () => {
     const output = handleSynthesize(input);
 
     // T-257: output should have verificationCounters
-    expect(output).toHaveProperty("verificationCounters");
-    const vc = (output as any).verificationCounters;
-    expect(vc).toHaveProperty("proposed");
-    expect(vc).toHaveProperty("verified");
-    expect(vc).toHaveProperty("rejected");
-    // verified should be strictly verified (pass=true) count, not total
+    expect(output.verificationCounters).toBeDefined();
+    const vc = output.verificationCounters;
     expect(typeof vc.proposed).toBe("number");
     expect(typeof vc.verified).toBe("number");
     expect(typeof vc.rejected).toBe("number");
-    // Without a real snapshot, integrity failure occurs: verified=0, rejected=0
-    // With a snapshot: proposed = verified + rejected + runtimeErrors
-    if ((output as any).snapshotIntegrityFailure) {
-      expect(vc.verified).toBe(0);
-      expect(vc.rejected).toBe(0);
-      expect(vc.proposed).toBeGreaterThan(0);
-    } else {
-      expect(vc.proposed).toBe(vc.verified + vc.rejected);
-    }
+    // Without a real snapshot, integrity failure always occurs
+    expect(output.snapshotIntegrityFailure).toBe(true);
+    expect(vc.verified).toBe(0);
+    expect(vc.rejected).toBe(0);
+    expect(vc.proposed).toBeGreaterThan(0);
   });
 
   it("skips verification when sessionId is absent -- all pass to merger, preExisting=[], verified=0", () => {
@@ -144,9 +136,8 @@ describe("handleSynthesize verification gate", () => {
     // All findings should pass to merger
     expect(output.validatedFindings.length).toBeGreaterThan(0);
     // preExistingFindings should be [] (filing suppressed on skip path)
-    expect((output as any).verificationSkipped).toBe(true);
-    const vc = (output as any).verificationCounters;
-    expect(vc.verified).toBe(0);
+    expect(output.verificationSkipped).toBe(true);
+    expect(output.verificationCounters.verified).toBe(0);
   });
 
   it("skips verification when projectRoot is absent -- same skip-path behavior", () => {
@@ -158,7 +149,7 @@ describe("handleSynthesize verification gate", () => {
 
     // All findings should still appear in merger output
     expect(output.validatedFindings.length).toBeGreaterThan(0);
-    expect((output as any).verificationSkipped).toBe(true);
+    expect(output.verificationSkipped).toBe(true);
   });
 
   it("sets snapshotIntegrityFailure with no duplicates and preExisting=[]", () => {
@@ -174,19 +165,15 @@ describe("handleSynthesize verification gate", () => {
 
     const output = handleSynthesize(input);
 
-    // T-257: When SnapshotIntegrityError is thrown (which happens when
-    // snapshot is missing/corrupt), the gate should set the flag.
-    // Since we don't have a real snapshot, the verifier will throw.
-    // After T-257 implementation, verify:
-    if ((output as any).snapshotIntegrityFailure) {
-      // No duplicate findings in output
-      const ids = output.validatedFindings.map(f => f.issueKey);
-      expect(ids.length).toBe(new Set(ids).size);
-      // preExisting should be empty
-      expect(output.preExistingFindings).toEqual([]);
-      // verified counter should be 0
-      expect((output as any).verificationCounters.verified).toBe(0);
-    }
+    // Without a real snapshot, integrity failure always fires
+    expect(output.snapshotIntegrityFailure).toBe(true);
+    // No duplicate findings in output
+    const ids = output.validatedFindings.map(f => f.issueKey);
+    expect(ids.length).toBe(new Set(ids).size);
+    // preExisting should be empty on integrity failure
+    expect(output.preExistingFindings).toEqual([]);
+    // verified counter should be 0
+    expect(output.verificationCounters.verified).toBe(0);
   });
 
   it("SnapshotIntegrityError skips rejection logging entirely", () => {
@@ -203,10 +190,7 @@ describe("handleSynthesize verification gate", () => {
     handleSynthesize(input);
 
     // T-257: on integrity failure, verification.log should NOT be written
-    if (!existsSync(join(sessionDir, "verification.log"))) {
-      // Expected -- no log on integrity failure
-      expect(true).toBe(true);
-    }
+    expect(existsSync(join(sessionDir, "verification.log"))).toBe(false);
   });
 
   it("unknown verification error passes finding to merger but not to preExisting, increments runtimeErrors", () => {
@@ -223,8 +207,7 @@ describe("handleSynthesize verification gate", () => {
     const output = handleSynthesize(input);
 
     // T-257: output should have verificationRuntimeErrors
-    expect(output).toHaveProperty("verificationRuntimeErrors");
-    expect(typeof (output as any).verificationRuntimeErrors).toBe("number");
+    expect(typeof output.verificationRuntimeErrors).toBe("number");
   });
 
   it("log write failures do not affect verified/rejected partition", () => {
@@ -241,16 +224,11 @@ describe("handleSynthesize verification gate", () => {
     const output = handleSynthesize(input);
 
     // T-257: logWriteFailures should not change the finding partition
-    expect(output).toHaveProperty("logWriteFailures");
-    const vc = (output as any).verificationCounters;
-    // On integrity failure: verified=0, rejected=0 (findings bypassed)
-    // On success: proposed = verified + rejected + runtimeErrors
-    if ((output as any).snapshotIntegrityFailure) {
-      expect(vc.verified).toBe(0);
-      expect(vc.rejected).toBe(0);
-    } else {
-      expect(vc.proposed).toBe(vc.verified + vc.rejected);
-    }
+    expect(typeof output.logWriteFailures).toBe("number");
+    // On integrity failure (no real snapshot): verified=0, rejected=0
+    expect(output.snapshotIntegrityFailure).toBe(true);
+    expect(output.verificationCounters.verified).toBe(0);
+    expect(output.verificationCounters.rejected).toBe(0);
   });
 
   it("mergerPrompt only includes verified findings", () => {
@@ -307,17 +285,16 @@ describe("handleSynthesize verification gate", () => {
     const output = handleSynthesize(input);
 
     // T-257: should write verification-telemetry.jsonl
-    expect(output).toHaveProperty("telemetryWriteFailed");
+    expect(typeof output.telemetryWriteFailed).toBe("boolean");
     const telemetryPath = join(sessionDir, "verification-telemetry.jsonl");
-    if (existsSync(telemetryPath)) {
-      const lines = readFileSync(telemetryPath, "utf-8").trim().split("\n");
-      expect(lines.length).toBeGreaterThan(0);
-      const entry = JSON.parse(lines[0]);
-      expect(entry).toHaveProperty("reviewId");
-      expect(entry).toHaveProperty("proposed");
-      expect(entry).toHaveProperty("verified");
-      expect(entry).toHaveProperty("rejected");
-      expect(entry).toHaveProperty("timestamp");
-    }
+    expect(existsSync(telemetryPath)).toBe(true);
+    const lines = readFileSync(telemetryPath, "utf-8").trim().split("\n");
+    expect(lines.length).toBeGreaterThan(0);
+    const entry = JSON.parse(lines[0]!);
+    expect(entry).toHaveProperty("reviewId");
+    expect(entry).toHaveProperty("proposed");
+    expect(entry).toHaveProperty("verified");
+    expect(entry).toHaveProperty("rejected");
+    expect(entry).toHaveProperty("timestamp");
   });
 });
