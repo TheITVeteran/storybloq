@@ -47,11 +47,14 @@ function makeFinding(lens: string, overrides: Record<string, unknown> = {}) {
     description: `Finding from ${lens}`,
     file: "src/api.ts",
     line: 4,
-    evidence: "db.query(req.params.id)",
+    evidence: [
+      { file: "src/api.ts", startLine: 4, endLine: 4, code: "db.query(req.params.id)" },
+    ],
     suggestedFix: "Use parameterized query",
     confidence: 0.9,
     assumptions: null,
     requiresMoreContext: false,
+    ...overrides,
   };
 }
 
@@ -335,7 +338,14 @@ describe("handleSynthesize origin classification (T-192)", () => {
       description: `Finding from ${lens} in ${file ?? "unknown"}`,
       file,
       line,
-      evidence: "test evidence",
+      evidence: [
+        {
+          file: file ?? "(unknown)",
+          startLine: line ?? 1,
+          endLine: line ?? 1,
+          code: "test evidence",
+        },
+      ],
       suggestedFix: "test fix",
       confidence: 0.9,
       assumptions: null,

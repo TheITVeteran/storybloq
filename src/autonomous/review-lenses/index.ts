@@ -13,16 +13,44 @@ export type {
 export { determineActiveLenses } from "./activation.js";
 export { computeBlocking } from "./blocking-policy.js";
 export { generateIssueKey } from "./issue-key.js";
-export { validateFindings } from "./schema-validator.js";
-export { buildCacheKey, getFromCache, writeToCache, clearCache } from "./cache.js";
+export {
+  validateFindings,
+  validateCachedFindings,
+  bridgeLegacyEvidence,
+  enforceLocationInvariant,
+  restoreSourceMarkers,
+  logRestorationSkip,
+  getRestorationSkipCounts,
+} from "./schema-validator.js";
+export type { ValidationResult } from "./schema-validator.js";
+export {
+  lensFindingSchema,
+  evidenceItemSchema,
+  parseLensFinding,
+  isLegacyBridgedEvidence,
+  flattenZodError,
+  LEGACY_NO_CODE_PLACEHOLDER,
+  LEGACY_UNLOCATED_FILE,
+} from "./finding-schema.js";
+export { parseMergerResult, buildMergerPrompt } from "./merger.js";
+export { parseJudgeResult, buildJudgePrompt } from "./judge.js";
+export {
+  buildCacheKey,
+  getFromCache,
+  writeToCache,
+  clearCache,
+  getCacheMetrics,
+} from "./cache.js";
 export { buildLensPrompt, getLensVersion } from "./lenses/index.js";
 export { compareResults, formatEvaluationReport } from "./evaluation.js";
 
 export type {
   LensFinding,
+  EvidenceItem,
   LensResult,
   Tension,
   MergerResult,
+  MergeEntry,
   SynthesisResult,
   LensProgressEvent,
   BlockingPolicy,

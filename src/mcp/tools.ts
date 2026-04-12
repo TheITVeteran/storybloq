@@ -9,6 +9,8 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { TARGET_WORK_ID_REGEX } from "../autonomous/session-types.js";
 import { handlePrepare, handleSynthesize, handleJudge } from "../autonomous/review-lenses/mcp-handlers.js";
+import { validateCachedFindings } from "../autonomous/review-lenses/schema-validator.js";
+import type { LensFinding } from "../autonomous/review-lenses/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { loadProject } from "../core/project-loader.js";
@@ -870,9 +872,22 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
         important: z.number(),
         newCode: z.string(),
       })).optional().describe("Prior round verdicts for convergence tracking"),
+      sourceFindings: z.array(z.unknown()).optional().describe(
+        "Pre-merger validated findings from the synthesize step (`validatedFindings`). Used to restore validator-owned markers that were stripped from the merger LLM's output. CDX-13.",
+      ),
     },
   }, (args) => {
     try {
+      // CDX-R1-05: validate sourceFindings at the MCP boundary before
+      // handing them to restoreSourceMarkers. Malformed caller input (null
+      // entries, missing issueKey/evidence, wrong types) would otherwise
+      // throw deep inside restoration and get swallowed by parseMergerResult's
+      // outer try/catch, silently degrading the whole merger parse to the
+      // null fallback path and disabling CDX-13 restoration. Invalid entries
+      // are dropped; valid ones are passed through unchanged.
+      const { valid: validatedSources } = validateCachedFindings(
+        args.sourceFindings ?? [],
+      );
       const result = handleJudge({
         mergerResultRaw: args.mergerResultRaw,
         stage: args.stage,
@@ -881,6 +896,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
         lensesInsufficientContext: args.lensesInsufficientContext ?? [],
         lensesSkipped: args.lensesSkipped ?? [],
         convergenceHistory: args.convergenceHistory,
+        sourceFindings: validatedSources as readonly LensFinding[],
       });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     } catch (err) {

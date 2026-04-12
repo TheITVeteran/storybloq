@@ -320,6 +320,10 @@ export interface JudgeInput {
   readonly lensesFailed: readonly string[];
   readonly lensesInsufficientContext: readonly string[];
   readonly lensesSkipped: readonly string[];
+  // CDX-13: pre-merger source set for source-authoritative marker restoration
+  // inside `parseMergerResult`. Callers pass the `validatedFindings` field
+  // returned from `handleSynthesize`.
+  readonly sourceFindings?: readonly LensFinding[];
 }
 
 export interface JudgeOutput {
@@ -329,7 +333,10 @@ export interface JudgeOutput {
 }
 
 export function handleJudge(input: JudgeInput): JudgeOutput {
-  const mergerResult = parseMergerResult(input.mergerResultRaw);
+  const mergerResult = parseMergerResult(
+    input.mergerResultRaw,
+    input.sourceFindings ?? [],
+  );
   // isPartial: true if any core lens failed OR returned insufficient-context
   const isPartial = CORE_LENSES.some((l) =>
     input.lensesFailed.includes(l) || input.lensesInsufficientContext.includes(l),
