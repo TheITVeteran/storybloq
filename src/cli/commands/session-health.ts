@@ -33,7 +33,7 @@ export async function handleSessionHealth(
   const result = deriveHealthState(dir);
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 
-  const ok = result.healthState === "healthy" || result.healthState === "working" || result.healthState === "waiting-on-build";
+  const ok = result.healthState === "healthy" || result.healthState === "working" || result.healthState === "waiting-on-build" || result.healthState === "ended" || result.healthState === "unknown";
   if (!ok) {
     process.exitCode = 1;
   }
