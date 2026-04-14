@@ -166,6 +166,8 @@ export interface SessionState {
   readonly healthState?: string | null;
   // T-271: Queue progress
   readonly targetWork?: ReadonlyArray<string> | null;
+  // T-277: Session elapsed-time timer
+  readonly startedAt?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +186,7 @@ export interface StatusPayloadActive {
   readonly risk: string | null;
   readonly claudeStatus: ClaudeStatus;
   readonly observedAt: string;
+  readonly startedAt?: string | null;
   readonly lastGuideCall: string | null;
   readonly completedThisSession: readonly string[];
   readonly contextPressure: string;

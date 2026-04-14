@@ -25,6 +25,7 @@ export function buildActivePayload(
     risk: session.ticket?.risk ?? null,
     claudeStatus: deriveClaudeStatus(session.state, session.waitingForRetry),
     observedAt: new Date().toISOString(),
+    startedAt: session.startedAt ?? null,
     lastGuideCall: session.lastGuideCall ?? null,
     completedThisSession: [
       ...(session.completedTickets?.map((t) => t.id) ?? []),

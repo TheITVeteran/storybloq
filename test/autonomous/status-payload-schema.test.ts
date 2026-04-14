@@ -170,6 +170,20 @@ describe("StatusPayload schema foundation (T-259)", () => {
       const payload = buildActivePayload(session);
       expect(payload.currentIssue).toBeNull();
     });
+
+    // T-277: session elapsed-time timer — startedAt on active payload
+    it("copies startedAt from session onto active payload", () => {
+      const session = makeFullSessionState();
+      (session as Record<string, unknown>).startedAt = "2026-04-13T10:00:00.000Z";
+      const payload = buildActivePayload(session);
+      expect(payload.startedAt).toBe("2026-04-13T10:00:00.000Z");
+    });
+
+    it("defaults startedAt to null when absent on session", () => {
+      const session = makeFullSessionState();
+      const payload = buildActivePayload(session);
+      expect(payload.startedAt).toBeNull();
+    });
   });
 
   describe("buildInactivePayload", () => {
