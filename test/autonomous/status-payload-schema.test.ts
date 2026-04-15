@@ -124,8 +124,10 @@ describe("StatusPayload schema foundation (T-259)", () => {
 
     // T-271: targetWork + currentIssue in status payload
     it("includes targetWork when session has targeted work items", () => {
-      const session = makeFullSessionState();
-      (session as Record<string, unknown>).targetWork = ["T-042", "T-043", "ISS-010"];
+      const session: SessionState = {
+        ...makeFullSessionState(),
+        targetWork: ["T-042", "T-043", "ISS-010"],
+      };
       const payload = buildActivePayload(session);
       expect(payload.targetWork).toEqual(["T-042", "T-043", "ISS-010"]);
     });
@@ -137,18 +139,19 @@ describe("StatusPayload schema foundation (T-259)", () => {
     });
 
     it("sets targetWork to null when session has empty target array", () => {
-      const session = makeFullSessionState();
-      (session as Record<string, unknown>).targetWork = [];
+      const session: SessionState = { ...makeFullSessionState(), targetWork: [] };
       const payload = buildActivePayload(session);
       expect(payload.targetWork).toBeNull();
     });
 
     it("includes currentIssue when session is working on an issue", () => {
-      const session = makeFullSessionState();
-      (session as Record<string, unknown>).currentIssue = {
-        id: "ISS-010",
-        title: "Flaky test in auth module",
-        severity: "high",
+      const session: SessionState = {
+        ...makeFullSessionState(),
+        currentIssue: {
+          id: "ISS-010",
+          title: "Flaky test in auth module",
+          severity: "high",
+        },
       };
       const payload = buildActivePayload(session);
       expect(payload.currentIssue).toEqual({
@@ -165,16 +168,17 @@ describe("StatusPayload schema foundation (T-259)", () => {
     });
 
     it("sets currentIssue to null when session.currentIssue is explicitly null", () => {
-      const session = makeFullSessionState();
-      (session as Record<string, unknown>).currentIssue = null;
+      const session: SessionState = { ...makeFullSessionState(), currentIssue: null };
       const payload = buildActivePayload(session);
       expect(payload.currentIssue).toBeNull();
     });
 
     // T-277: session elapsed-time timer — startedAt on active payload
     it("copies startedAt from session onto active payload", () => {
-      const session = makeFullSessionState();
-      (session as Record<string, unknown>).startedAt = "2026-04-13T10:00:00.000Z";
+      const session: SessionState = {
+        ...makeFullSessionState(),
+        startedAt: "2026-04-13T10:00:00.000Z",
+      };
       const payload = buildActivePayload(session);
       expect(payload.startedAt).toBe("2026-04-13T10:00:00.000Z");
     });
