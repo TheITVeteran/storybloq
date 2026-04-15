@@ -509,9 +509,11 @@ describe("registerPreCompactHook", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
+  const FAKE_BIN = "/fake/claudestory";
+
   async function importHook() {
     const { registerPreCompactHook } = await import("../../../src/cli/commands/setup-skill.js");
-    return registerPreCompactHook;
+    return (path?: string) => registerPreCompactHook(path, FAKE_BIN);
   }
 
   async function readSettings(): Promise<Record<string, unknown>> {
@@ -534,7 +536,7 @@ describe("registerPreCompactHook", () => {
     expect(preCompact[0]!.matcher).toBe("");
     expect(preCompact[0]!.hooks).toHaveLength(1);
     expect(preCompact[0]!.hooks[0]!.type).toBe("command");
-    expect(preCompact[0]!.hooks[0]!.command).toBe("claudestory session compact-prepare");
+    expect(preCompact[0]!.hooks[0]!.command).toBe(`${FAKE_BIN} session compact-prepare`);
   });
 
   it("merges into existing settings preserving other config", async () => {
@@ -613,7 +615,7 @@ describe("registerPreCompactHook", () => {
     await writeFile(settingsPath, JSON.stringify({
       hooks: {
         PreCompact: [
-          { matcher: "auto", hooks: [{ type: "command", command: "claudestory session compact-prepare" }] },
+          { matcher: "auto", hooks: [{ type: "command", command: `${FAKE_BIN} session compact-prepare` }] },
         ],
       },
     }, null, 2), "utf-8");
@@ -706,5 +708,380 @@ describe("registerPreCompactHook", () => {
     const preCompact = hooks.PreCompact as unknown[];
     // Original 3 entries preserved + new group added
     expect(preCompact).toHaveLength(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatHookCommand (ISS-560)
+// ---------------------------------------------------------------------------
+
+describe("formatHookCommand", () => {
+  it("does not quote a clean POSIX path", async () => {
+    if (process.platform === "win32") return;
+    const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(formatHookCommand("/usr/local/bin/claudestory", "hook-status"))
+      .toBe("/usr/local/bin/claudestory hook-status");
+  });
+
+  it("single-quote-wraps a POSIX path with a space", async () => {
+    if (process.platform === "win32") return;
+    const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(formatHookCommand("/path with space/claudestory", "hook-status"))
+      .toBe("'/path with space/claudestory' hook-status");
+  });
+
+  it("escapes embedded single quote on POSIX", async () => {
+    if (process.platform === "win32") return;
+    const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(formatHookCommand("/weird'path/claudestory", "hook-status"))
+      .toBe("'/weird'\\''path/claudestory' hook-status");
+  });
+
+  it("quotes POSIX path with shell metachar", async () => {
+    if (process.platform === "win32") return;
+    const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(formatHookCommand("/has&amp/claudestory", "hook-status"))
+      .toBe("'/has&amp/claudestory' hook-status");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveClaudestoryBin (ISS-560)
+// ---------------------------------------------------------------------------
+
+describe("resolveClaudestoryBin", () => {
+  let tempDir: string;
+  let originalPath: string | undefined;
+  let originalHome: string | undefined;
+
+  beforeEach(async () => {
+    tempDir = join(tmpdir(), `claudestory-resolve-${randomUUID()}`);
+    await mkdir(tempDir, { recursive: true });
+    originalPath = process.env.PATH;
+    originalHome = process.env.HOME;
+  });
+
+  afterEach(async () => {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns null when PATH is empty and no candidates match", async () => {
+    if (process.platform === "win32") return;
+    process.env.PATH = "";
+    // Redirect HOME to a dir with no candidate binaries.
+    process.env.HOME = tempDir;
+    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(resolveClaudestoryBin()).toBe(null);
+  });
+
+  it("finds executable on PATH", async () => {
+    if (process.platform === "win32") return;
+    const binDir = join(tempDir, "bin");
+    await mkdir(binDir, { recursive: true });
+    const binPath = join(binDir, "claudestory");
+    await writeFile(binPath, "#!/bin/sh\necho hi\n", "utf-8");
+    const { chmod } = await import("node:fs/promises");
+    await chmod(binPath, 0o755);
+    process.env.PATH = binDir;
+    process.env.HOME = tempDir;
+    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(resolveClaudestoryBin()).toBe(binPath);
+  });
+
+  it("skips non-executable claudestory entry on PATH", async () => {
+    if (process.platform === "win32") return;
+    const binDir = join(tempDir, "bin");
+    await mkdir(binDir, { recursive: true });
+    const binPath = join(binDir, "claudestory");
+    // Write a file that is readable but not executable.
+    await writeFile(binPath, "not-executable", "utf-8");
+    const { chmod } = await import("node:fs/promises");
+    await chmod(binPath, 0o644);
+    process.env.PATH = binDir;
+    process.env.HOME = tempDir;
+    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(resolveClaudestoryBin()).toBe(null);
+  });
+
+  it("prefers PATH match over candidate list", async () => {
+    if (process.platform === "win32") return;
+    const pathBinDir = join(tempDir, "path-bin");
+    await mkdir(pathBinDir, { recursive: true });
+    const pathBin = join(pathBinDir, "claudestory");
+    await writeFile(pathBin, "#!/bin/sh\n", "utf-8");
+    const { chmod } = await import("node:fs/promises");
+    await chmod(pathBin, 0o755);
+    process.env.PATH = pathBinDir;
+    process.env.HOME = tempDir;
+    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
+    // PATH-level match should win regardless of candidate list contents.
+    expect(resolveClaudestoryBin()).toBe(pathBin);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// registerStopHook (ISS-560)
+// ---------------------------------------------------------------------------
+
+describe("registerStopHook", () => {
+  let tempDir: string;
+  let settingsPath: string;
+  const FAKE_BIN = "/fake/claudestory";
+
+  beforeEach(async () => {
+    tempDir = join(tmpdir(), `claudestory-stop-hook-${randomUUID()}`);
+    await mkdir(tempDir, { recursive: true });
+    settingsPath = join(tempDir, "settings.json");
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  async function read(): Promise<Record<string, unknown>> {
+    const raw = await readFile(settingsPath, "utf-8");
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  it("creates Stop hook with empty matcher and async flag", async () => {
+    const { registerStopHook } = await import("../../../src/cli/commands/setup-skill.js");
+    const result = await registerStopHook(settingsPath, FAKE_BIN);
+
+    expect(result).toBe("registered");
+    const settings = await read();
+    const hooks = settings.hooks as Record<string, unknown>;
+    const stop = hooks.Stop as Array<{ matcher: string; hooks: Array<{ type: string; command: string; async: boolean }> }>;
+    expect(stop).toHaveLength(1);
+    expect(stop[0]!.matcher).toBe("");
+    expect(stop[0]!.hooks[0]!.type).toBe("command");
+    expect(stop[0]!.hooks[0]!.command).toBe(`${FAKE_BIN} hook-status`);
+    expect(stop[0]!.hooks[0]!.async).toBe(true);
+  });
+
+  it("is idempotent on re-register with same binPath", async () => {
+    const { registerStopHook } = await import("../../../src/cli/commands/setup-skill.js");
+    await registerStopHook(settingsPath, FAKE_BIN);
+    const result = await registerStopHook(settingsPath, FAKE_BIN);
+    expect(result).toBe("exists");
+  });
+
+  it("preserves unrelated hook-status command from another tool", async () => {
+    await writeFile(settingsPath, JSON.stringify({
+      hooks: {
+        Stop: [
+          { matcher: "", hooks: [{ type: "command", command: "/some/other-tool hook-status" }] },
+        ],
+      },
+    }, null, 2), "utf-8");
+    const { registerStopHook } = await import("../../../src/cli/commands/setup-skill.js");
+    const result = await registerStopHook(settingsPath, FAKE_BIN);
+    expect(result).toBe("registered");
+    const settings = await read();
+    const hooks = settings.hooks as Record<string, unknown>;
+    const stop = hooks.Stop as Array<{ hooks: Array<{ command: string }> }>;
+    // One matcher group (""), with two commands.
+    expect(stop).toHaveLength(1);
+    const cmds = stop[0]!.hooks.map((h) => h.command);
+    expect(cmds).toContain("/some/other-tool hook-status");
+    expect(cmds).toContain(`${FAKE_BIN} hook-status`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// registerSessionStartHook (ISS-560)
+// ---------------------------------------------------------------------------
+
+describe("registerSessionStartHook", () => {
+  let tempDir: string;
+  let settingsPath: string;
+  const FAKE_BIN = "/fake/claudestory";
+
+  beforeEach(async () => {
+    tempDir = join(tmpdir(), `claudestory-start-hook-${randomUUID()}`);
+    await mkdir(tempDir, { recursive: true });
+    settingsPath = join(tempDir, "settings.json");
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  async function read(): Promise<Record<string, unknown>> {
+    const raw = await readFile(settingsPath, "utf-8");
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  it("creates SessionStart hook with matcher 'compact'", async () => {
+    const { registerSessionStartHook } = await import("../../../src/cli/commands/setup-skill.js");
+    const result = await registerSessionStartHook(settingsPath, FAKE_BIN);
+
+    expect(result).toBe("registered");
+    const settings = await read();
+    const hooks = settings.hooks as Record<string, unknown>;
+    const start = hooks.SessionStart as Array<{ matcher: string; hooks: Array<{ command: string }> }>;
+    expect(start).toHaveLength(1);
+    expect(start[0]!.matcher).toBe("compact");
+    expect(start[0]!.hooks[0]!.command).toBe(`${FAKE_BIN} session resume-prompt`);
+  });
+
+  it("preserves non-claudestory SessionStart hooks with matcher 'compact'", async () => {
+    await writeFile(settingsPath, JSON.stringify({
+      hooks: {
+        SessionStart: [
+          { matcher: "compact", hooks: [{ type: "command", command: "/other/tool custom-prompt" }] },
+        ],
+      },
+    }, null, 2), "utf-8");
+    const { registerSessionStartHook } = await import("../../../src/cli/commands/setup-skill.js");
+    const result = await registerSessionStartHook(settingsPath, FAKE_BIN);
+    expect(result).toBe("registered");
+    const settings = await read();
+    const hooks = settings.hooks as Record<string, unknown>;
+    const start = hooks.SessionStart as Array<{ hooks: Array<{ command: string }> }>;
+    const cmds = start[0]!.hooks.map((h) => h.command);
+    expect(cmds).toContain("/other/tool custom-prompt");
+    expect(cmds).toContain(`${FAKE_BIN} session resume-prompt`);
+  });
+
+  it("is idempotent on re-register", async () => {
+    const { registerSessionStartHook } = await import("../../../src/cli/commands/setup-skill.js");
+    await registerSessionStartHook(settingsPath, FAKE_BIN);
+    const result = await registerSessionStartHook(settingsPath, FAKE_BIN);
+    expect(result).toBe("exists");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// migrateLegacyHookVariants (ISS-560)
+// ---------------------------------------------------------------------------
+
+describe("migrateLegacyHookVariants", () => {
+  let tempDir: string;
+  let settingsPath: string;
+
+  beforeEach(async () => {
+    tempDir = join(tmpdir(), `claudestory-migrate-${randomUUID()}`);
+    await mkdir(tempDir, { recursive: true });
+    settingsPath = join(tempDir, "settings.json");
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  async function seed(hookType: string, commands: string[]): Promise<void> {
+    await writeFile(settingsPath, JSON.stringify({
+      hooks: {
+        [hookType]: [
+          { matcher: "", hooks: commands.map((c) => ({ type: "command", command: c })) },
+        ],
+      },
+    }, null, 2), "utf-8");
+  }
+
+  async function remainingCommands(hookType: string): Promise<string[]> {
+    const raw = await readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(raw) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+    const groups = settings.hooks[hookType] ?? [];
+    return groups.flatMap((g) => g.hooks.map((h) => h.command));
+  }
+
+  it("removes bare `claudestory` command when newCommand is absolute", async () => {
+    await seed("PreCompact", ["claudestory session compact-prepare"]);
+    const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
+    const count = await migrateLegacyHookVariants(
+      "PreCompact",
+      "session compact-prepare",
+      "/new/bin/claudestory session compact-prepare",
+      settingsPath,
+    );
+    expect(count).toBe(1);
+    expect(await remainingCommands("PreCompact")).toEqual([]);
+  });
+
+  it("removes stale absolute path that no longer matches", async () => {
+    await seed("PreCompact", ["/old/v20/bin/claudestory session compact-prepare"]);
+    const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
+    const count = await migrateLegacyHookVariants(
+      "PreCompact",
+      "session compact-prepare",
+      "/new/v22/bin/claudestory session compact-prepare",
+      settingsPath,
+    );
+    expect(count).toBe(1);
+  });
+
+  it("preserves exact-match newCommand (idempotent)", async () => {
+    const cmd = "/new/bin/claudestory session compact-prepare";
+    await seed("PreCompact", [cmd]);
+    const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
+    const count = await migrateLegacyHookVariants(
+      "PreCompact",
+      "session compact-prepare",
+      cmd,
+      settingsPath,
+    );
+    expect(count).toBe(0);
+    expect(await remainingCommands("PreCompact")).toEqual([cmd]);
+  });
+
+  it("preserves other-tool command (basename !== claudestory)", async () => {
+    const cmd = "/other/bin/mytool session compact-prepare";
+    await seed("PreCompact", [cmd]);
+    const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
+    const count = await migrateLegacyHookVariants(
+      "PreCompact",
+      "session compact-prepare",
+      "/new/bin/claudestory session compact-prepare",
+      settingsPath,
+    );
+    expect(count).toBe(0);
+    expect(await remainingCommands("PreCompact")).toEqual([cmd]);
+  });
+
+  it("preserves claudestory with extra flag (rest !== subcommand)", async () => {
+    const cmd = "claudestory session compact-prepare --extra-flag";
+    await seed("PreCompact", [cmd]);
+    const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
+    const count = await migrateLegacyHookVariants(
+      "PreCompact",
+      "session compact-prepare",
+      "/new/bin/claudestory session compact-prepare",
+      settingsPath,
+    );
+    expect(count).toBe(0);
+    expect(await remainingCommands("PreCompact")).toEqual([cmd]);
+  });
+
+  it("handles quoted path with space", async () => {
+    if (process.platform === "win32") return;
+    const cmd = "'/path with space/claudestory' session compact-prepare";
+    await seed("PreCompact", [cmd]);
+    const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
+    const count = await migrateLegacyHookVariants(
+      "PreCompact",
+      "session compact-prepare",
+      "/new/bin/claudestory session compact-prepare",
+      settingsPath,
+    );
+    expect(count).toBe(1);
+  });
+
+  it("leaves malformed command entries untouched", async () => {
+    const cmd = "| & > evil";
+    await seed("PreCompact", [cmd]);
+    const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
+    const count = await migrateLegacyHookVariants(
+      "PreCompact",
+      "session compact-prepare",
+      "/new/bin/claudestory session compact-prepare",
+      settingsPath,
+    );
+    expect(count).toBe(0);
+    expect(await remainingCommands("PreCompact")).toEqual([cmd]);
   });
 });

@@ -1,6 +1,6 @@
 import { mkdir, writeFile, readFile, readdir, copyFile, rm, rename, unlink } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { existsSync, accessSync, readdirSync, constants as fsConstants } from "node:fs";
+import { join, dirname, basename, delimiter as pathDelimiter } from "node:path";
 import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -81,10 +81,173 @@ export async function copyDirRecursive(srcDir: string, destDir: string): Promise
 // Hook registration (ISS-032: hook-driven compaction)
 // ---------------------------------------------------------------------------
 
-const PRECOMPACT_HOOK_COMMAND = "claudestory session compact-prepare";
+const PRECOMPACT_SUBCOMMAND = "session compact-prepare";
+const SESSIONSTART_SUBCOMMAND = "session resume-prompt";
+const STOP_SUBCOMMAND = "hook-status";
 const LEGACY_PRECOMPACT_HOOK_COMMAND = "claudestory snapshot --quiet";
-const SESSIONSTART_HOOK_COMMAND = "claudestory session resume-prompt";
-const STOP_HOOK_COMMAND = "claudestory hook-status";
+
+// ---------------------------------------------------------------------------
+// Claudestory binary resolution (ISS-560)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves `claudestory` to an absolute filesystem path.
+ *
+ * Walks `process.env.PATH` first (respecting PATHEXT on Windows), then falls
+ * back to a platform-scoped candidate list covering nvm/fnm/volta/asdf and
+ * common npm global bin locations. Returns `null` if no executable is found.
+ *
+ * Hooks registered by setup-skill bake the returned path into the command
+ * string so that mid-session `nvm use` / `fnm use` / `asdf shell` switches
+ * do not strip the command from the active PATH.
+ */
+export function resolveClaudestoryBin(): string | null {
+  const isWindows = process.platform === "win32";
+  const exts = isWindows
+    ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)
+    : [""];
+
+  const pathEnv = process.env.PATH ?? "";
+  for (const dir of pathEnv.split(pathDelimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = join(dir, "claudestory" + ext);
+      if (isExecutableFile(candidate)) return candidate;
+    }
+  }
+
+  for (const candidate of candidatePaths()) {
+    if (isExecutableFile(candidate)) return candidate;
+  }
+
+  return null;
+}
+
+function isExecutableFile(path: string): boolean {
+  try {
+    accessSync(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function candidatePaths(): string[] {
+  const home = homedir();
+  const list: string[] = [];
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA ?? join(home, "AppData", "Roaming");
+    const localAppData = process.env.LOCALAPPDATA ?? join(home, "AppData", "Local");
+    for (const ext of [".cmd", ".exe", ".bat", ""]) {
+      list.push(join(appData, "npm", "claudestory" + ext));
+    }
+    const fnmMultishells = join(localAppData, "fnm_multishells");
+    try {
+      for (const shell of readdirSync(fnmMultishells).sort().reverse()) {
+        for (const ext of [".cmd", ".exe", ".bat", ""]) {
+          list.push(join(fnmMultishells, shell, "claudestory" + ext));
+        }
+      }
+    } catch { /* dir missing */ }
+    return list;
+  }
+
+  list.push(
+    join(home, ".local", "bin", "claudestory"),
+    "/usr/local/bin/claudestory",
+    "/opt/homebrew/bin/claudestory",
+    join(home, ".npm-global", "bin", "claudestory"),
+  );
+
+  const nvmVersions = join(home, ".nvm", "versions", "node");
+  try {
+    for (const v of readdirSync(nvmVersions).sort().reverse()) {
+      list.push(join(nvmVersions, v, "bin", "claudestory"));
+    }
+  } catch { /* dir missing */ }
+
+  const fnmDirs = process.platform === "darwin"
+    ? [join(home, "Library", "Application Support", "fnm", "node-versions")]
+    : [
+      join(home, ".local", "share", "fnm", "node-versions"),
+      join(home, "Library", "Application Support", "fnm", "node-versions"),
+    ];
+  for (const fnmDir of fnmDirs) {
+    try {
+      for (const v of readdirSync(fnmDir).sort().reverse()) {
+        list.push(join(fnmDir, v, "installation", "bin", "claudestory"));
+      }
+    } catch { /* dir missing */ }
+  }
+
+  list.push(
+    join(home, ".volta", "bin", "claudestory"),
+    join(home, ".asdf", "shims", "claudestory"),
+  );
+  return list;
+}
+
+/**
+ * Formats a hook command string: `<quotedBin> <subcommand>`.
+ *
+ * POSIX: single-quote-wraps binPath when it contains a space, tab, or shell
+ * metachar, escaping inner `'` as `'\''`; returns as-is otherwise for
+ * readability.
+ *
+ * Windows: always double-quote-wraps binPath and escapes embedded `"` as
+ * `""`. Inside cmd.exe double quotes, `&|<>()^!` are not interpreted as
+ * operators, so unconditional quoting covers every metachar without a
+ * separate detection heuristic.
+ */
+export function formatHookCommand(binPath: string, subcommand: string): string {
+  if (process.platform === "win32") {
+    const escaped = binPath.replace(/"/g, '""');
+    return `"${escaped}" ${subcommand}`;
+  }
+  // POSIX: only quote when we have to (readability).
+  const posixUnsafe = /[\s$`"'\\|&;<>()*?[\]{}~#!]/;
+  if (!posixUnsafe.test(binPath)) {
+    return `${binPath} ${subcommand}`;
+  }
+  const escaped = binPath.replace(/'/g, "'\\''");
+  return `'${escaped}' ${subcommand}`;
+}
+
+/**
+ * Parses the executable token from a hook command string.
+ *
+ * Returns the basename (without `.exe`/`.cmd`/`.bat` on Windows) and the
+ * remaining argument text after the token, or `null` if parsing fails.
+ * Used by `migrateLegacyHookVariants` to decide whether a registered hook
+ * actually invokes `claudestory`.
+ */
+function parseHookCommand(command: string): { binBasename: string; rest: string } | null {
+  const trimmed = command.trim();
+  if (trimmed.length === 0) return null;
+  let token: string;
+  let rest: string;
+  if (trimmed.startsWith("'")) {
+    const close = trimmed.indexOf("'", 1);
+    if (close < 0) return null;
+    token = trimmed.slice(1, close);
+    rest = trimmed.slice(close + 1);
+  } else if (trimmed.startsWith('"')) {
+    const close = trimmed.indexOf('"', 1);
+    if (close < 0) return null;
+    token = trimmed.slice(1, close);
+    rest = trimmed.slice(close + 1);
+  } else {
+    const space = trimmed.search(/\s/);
+    if (space < 0) { token = trimmed; rest = ""; }
+    else { token = trimmed.slice(0, space); rest = trimmed.slice(space); }
+  }
+  if (/[|&;<>`$()]/.test(token)) return null;
+  let base = basename(token);
+  if (process.platform === "win32") {
+    base = base.replace(/\.(exe|cmd|bat|com)$/i, "");
+  }
+  return { binBasename: base, rest: rest.trim() };
+}
 
 interface HookEntry {
   type: string;
@@ -222,24 +385,117 @@ async function registerHook(
 /**
  * Registers the PreCompact hook (session compact preparation).
  * ISS-032: changed from "snapshot --quiet" to "session-compact-prepare".
+ * ISS-560: accepts explicit `binPath` so hooks survive nvm/fnm Node switches.
  */
-export async function registerPreCompactHook(settingsPath?: string): Promise<"registered" | "exists" | "skipped"> {
-  return registerHook("PreCompact", { type: "command", command: PRECOMPACT_HOOK_COMMAND }, settingsPath);
+export async function registerPreCompactHook(
+  settingsPath?: string,
+  binPath?: string,
+): Promise<"registered" | "exists" | "skipped"> {
+  const bin = binPath ?? resolveClaudestoryBin() ?? "claudestory";
+  const command = formatHookCommand(bin, PRECOMPACT_SUBCOMMAND);
+  return registerHook("PreCompact", { type: "command", command }, settingsPath);
 }
 
 /**
  * Registers the SessionStart hook (resume prompt after compaction).
  * ISS-032: matcher "compact" matches source: "compact" in SessionStart hook input.
  */
-export async function registerSessionStartHook(settingsPath?: string): Promise<"registered" | "exists" | "skipped"> {
-  return registerHook("SessionStart", { type: "command", command: SESSIONSTART_HOOK_COMMAND }, settingsPath, "compact");
+export async function registerSessionStartHook(
+  settingsPath?: string,
+  binPath?: string,
+): Promise<"registered" | "exists" | "skipped"> {
+  const bin = binPath ?? resolveClaudestoryBin() ?? "claudestory";
+  const command = formatHookCommand(bin, SESSIONSTART_SUBCOMMAND);
+  return registerHook("SessionStart", { type: "command", command }, settingsPath, "compact");
 }
 
 /**
  * Registers the Stop hook (status.json writer after every Claude response).
  */
-export async function registerStopHook(settingsPath?: string): Promise<"registered" | "exists" | "skipped"> {
-  return registerHook("Stop", { type: "command", command: STOP_HOOK_COMMAND, async: true }, settingsPath);
+export async function registerStopHook(
+  settingsPath?: string,
+  binPath?: string,
+): Promise<"registered" | "exists" | "skipped"> {
+  const bin = binPath ?? resolveClaudestoryBin() ?? "claudestory";
+  const command = formatHookCommand(bin, STOP_SUBCOMMAND);
+  return registerHook("Stop", { type: "command", command, async: true }, settingsPath);
+}
+
+/**
+ * Removes hook entries whose executable basename is `claudestory` and whose
+ * argument tail matches `subcommand` exactly — but are not equal to the
+ * freshly-generated `newCommand`. Preserves idempotency (exact matches stay)
+ * and leaves unrelated user hooks alone (other tools, extra flags, wrappers).
+ *
+ * ISS-560: lets setup-skill replace stale bare `claudestory` and stale
+ * absolute-path entries from prior Node versions without touching anything
+ * the user added manually.
+ */
+export async function migrateLegacyHookVariants(
+  hookType: string,
+  subcommand: string,
+  newCommand: string,
+  settingsPath?: string,
+): Promise<number> {
+  const path = settingsPath ?? join(homedir(), ".claude", "settings.json");
+  if (!existsSync(path)) return 0;
+
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf-8");
+  } catch {
+    return 0;
+  }
+
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof settings !== "object" || settings === null || Array.isArray(settings)) return 0;
+  } catch {
+    return 0;
+  }
+
+  if (!("hooks" in settings) || typeof settings.hooks !== "object" || settings.hooks === null) return 0;
+  const hooks = settings.hooks as Record<string, unknown>;
+  if (!(hookType in hooks) || !Array.isArray(hooks[hookType])) return 0;
+
+  const hookArray = hooks[hookType] as unknown[];
+  let removedCount = 0;
+
+  for (const group of hookArray) {
+    if (typeof group !== "object" || group === null) continue;
+    const g = group as MatcherGroup;
+    if (!Array.isArray(g.hooks)) continue;
+    const before = g.hooks.length;
+    g.hooks = g.hooks.filter((entry) => {
+      if (typeof entry !== "object" || entry === null) return true;
+      const e = entry as HookEntry;
+      if (e.type !== "command" || typeof e.command !== "string") return true;
+      const cmd = e.command.trim();
+      if (cmd === newCommand.trim()) return true;
+      const parsed = parseHookCommand(cmd);
+      if (parsed === null) return true;
+      if (parsed.binBasename !== "claudestory") return true;
+      if (parsed.rest !== subcommand) return true;
+      return false;
+    });
+    removedCount += before - g.hooks.length;
+  }
+
+  if (removedCount === 0) return 0;
+
+  const tmpPath = `${path}.${process.pid}.tmp`;
+  try {
+    const dir = dirname(path);
+    await mkdir(dir, { recursive: true });
+    await writeFile(tmpPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+    await rename(tmpPath, path);
+  } catch {
+    try { await unlink(tmpPath); } catch { /* ignore */ }
+    return 0;
+  }
+
+  return removedCount;
 }
 
 /**
@@ -428,16 +684,33 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
     log("  claude mcp add claudestory -s user -- claudestory --mcp");
   }
 
-  // Hook registration (ISS-032: hook-driven compaction)
-  if (cliInPath && !skipHooks) {
+  // Hook registration (ISS-032: hook-driven compaction; ISS-560: absolute bin path)
+  // Gate on `resolveClaudestoryBin()` — Claude Code hooks run under a shell
+  // whose PATH may differ from this process's at install time (nvm/fnm
+  // switches mid-session). Baking the absolute path into the command string
+  // removes that dependency.
+  const resolvedBin = resolveClaudestoryBin();
+
+  if (!skipHooks && resolvedBin !== null) {
     // Migrate: remove legacy snapshot hook if present
     const legacyRemoved = await removeHook("PreCompact", LEGACY_PRECOMPACT_HOOK_COMMAND);
     if (legacyRemoved === "removed") {
       log("  Removed legacy PreCompact hook (snapshot --quiet)");
     }
 
-    // PreCompact hook
-    const precompactResult = await registerPreCompactHook();
+    // Precompute new command strings so migration can preserve exact matches.
+    const precompactCmd = formatHookCommand(resolvedBin, PRECOMPACT_SUBCOMMAND);
+    const sessionStartCmd = formatHookCommand(resolvedBin, SESSIONSTART_SUBCOMMAND);
+    const stopCmd = formatHookCommand(resolvedBin, STOP_SUBCOMMAND);
+
+    const migratedPre = await migrateLegacyHookVariants("PreCompact", PRECOMPACT_SUBCOMMAND, precompactCmd);
+    if (migratedPre > 0) log(`  Migrated ${migratedPre} stale PreCompact hook entr${migratedPre === 1 ? "y" : "ies"}`);
+    const migratedStart = await migrateLegacyHookVariants("SessionStart", SESSIONSTART_SUBCOMMAND, sessionStartCmd);
+    if (migratedStart > 0) log(`  Migrated ${migratedStart} stale SessionStart hook entr${migratedStart === 1 ? "y" : "ies"}`);
+    const migratedStop = await migrateLegacyHookVariants("Stop", STOP_SUBCOMMAND, stopCmd);
+    if (migratedStop > 0) log(`  Migrated ${migratedStop} stale Stop hook entr${migratedStop === 1 ? "y" : "ies"}`);
+
+    const precompactResult = await registerPreCompactHook(undefined, resolvedBin);
     switch (precompactResult) {
       case "registered":
         log("  PreCompact hook registered — session compact preparation before context compaction");
@@ -449,8 +722,7 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
         break;
     }
 
-    // SessionStart hook (compact matcher)
-    const sessionStartResult = await registerSessionStartHook();
+    const sessionStartResult = await registerSessionStartHook(undefined, resolvedBin);
     switch (sessionStartResult) {
       case "registered":
         log("  SessionStart hook registered — resume prompt after compaction");
@@ -462,8 +734,7 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
         break;
     }
 
-    // Stop hook
-    const stopResult = await registerStopHook();
+    const stopResult = await registerStopHook(undefined, resolvedBin);
     switch (stopResult) {
       case "registered":
         log("  Stop hook registered — status.json updated after every Claude response");
@@ -474,10 +745,14 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
       case "skipped":
         break;
     }
-  } else if (!cliInPath) {
-    // Hook registration skipped because CLI not in path — already logged above
   } else if (skipHooks) {
     log("  Hook registration skipped (--skip-hooks)");
+  } else {
+    log("");
+    log("Hook registration skipped — `claudestory` binary not found.");
+    log("Install globally first, then re-run setup-skill:");
+    log("  npm install -g @anthropologies/claudestory");
+    log("  claudestory setup-skill");
   }
 
   log("");
