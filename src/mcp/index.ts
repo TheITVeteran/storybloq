@@ -161,6 +161,68 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => { stopInboxWatcher(); process.exit(0); });
   process.on("SIGTERM", () => { stopInboxWatcher(); process.exit(0); });
 
+  // ISS-563: Process-level error handlers to prevent silent crashes.
+  // Tool handlers have their own try/catch; these catch everything else
+  // (escaped async errors, stream errors, SDK internals).
+  //
+  // After an uncaught exception Node process state is not guaranteed to be
+  // reliable, so we log and exit cleanly. Special-case EPIPE (broken pipe
+  // from Claude Code closing stdout) as a normal shutdown path.
+  process.on("uncaughtException", (err) => {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EPIPE") {
+      try { process.stderr.write("claudestory: stdout pipe broken (EPIPE), shutting down\n"); } catch { /* stderr may also be closed */ }
+      try { stopInboxWatcher(); } catch { /* best effort */ }
+      process.exit(0);
+    }
+    try { process.stderr.write(`claudestory: uncaught exception: ${err.message}\n`); } catch { /* stderr may also be closed */ }
+    try { stopInboxWatcher(); } catch { /* best effort */ }
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    const code = reason instanceof Error ? (reason as NodeJS.ErrnoException).code : undefined;
+    if (code === "EPIPE") {
+      try { process.stderr.write("claudestory: stdout pipe broken (EPIPE), shutting down\n"); } catch { /* stderr may also be closed */ }
+      try { stopInboxWatcher(); } catch { /* best effort */ }
+      process.exit(0);
+    }
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    try { process.stderr.write(`claudestory: unhandled rejection: ${msg}\n`); } catch { /* stderr may also be closed */ }
+    try { stopInboxWatcher(); } catch { /* best effort */ }
+    process.exit(1);
+  });
+
+  // ISS-563: Silence stderr errors to prevent cascading crashes if the parent
+  // closes stderr. process.stderr emits 'error' events that would otherwise
+  // propagate as uncaught exceptions.
+  process.stderr.on("error", () => { /* intentionally ignored */ });
+
+  // ISS-563: Clean exit when Claude Code closes the stdio pipe.
+  // Without this, the process zombies (kept alive by inbox watcher setInterval / FSWatcher)
+  // and the next stdout.write() crashes with EPIPE.
+  process.stdin.on("end", () => {
+    try { process.stderr.write("claudestory: stdin closed, shutting down\n"); } catch { /* stderr may also be closed */ }
+    try { stopInboxWatcher(); } catch { /* best effort */ }
+    process.exit(0);
+  });
+
+  // ISS-563: Handle stdout errors gracefully.
+  // When Claude Code closes its stdin (our stdout pipe), Node emits an 'error'
+  // event on process.stdout. Without a handler, this becomes an uncaught exception.
+  // Once stdout has errored the transport is unusable, so we always shut down.
+  process.stdout.on("error", (err) => {
+    const isEpipe = (err as NodeJS.ErrnoException).code === "EPIPE";
+    try {
+      process.stderr.write(
+        isEpipe
+          ? "claudestory: stdout pipe broken (EPIPE), shutting down\n"
+          : `claudestory: stdout error: ${err.message}\n`,
+      );
+    } catch { /* stderr may also be closed */ }
+    try { stopInboxWatcher(); } catch { /* best effort */ }
+    process.exit(isEpipe ? 0 : 1);
+  });
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
