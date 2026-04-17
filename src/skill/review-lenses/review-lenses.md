@@ -132,6 +132,19 @@ Spawn one agent with the `judgePrompt`. It calibrates severity and generates the
 
 Format the judge's output using the **Standardized Output Format** below.
 
+**Narrate high-severity findings live.** Before (or alongside) the standardized output, surface every `critical` and `major` finding as a one-line agent-visible narration so the user sees lenses earning their keep in real time, not tomorrow in a handover. Format:
+
+```
+-> storybloq · <lens>-lens · <severity> · <file>:<line> · <one-line summary>
+```
+
+Examples:
+- `-> storybloq · security-lens · critical · auth.ts:47 · hardcoded API key in fallback path`
+- `-> storybloq · performance-lens · major · feed.tsx:120 · O(n^2) render in message list`
+- `-> storybloq · test-quality-lens · major · user.service.ts:89 · happy-path only, missing error cases`
+
+Show these narrations during the autonomous CODE_REVIEW stage too -- this is the differentiating moment for storybloq (multi-AI review catching things single-AI misses) and it's wasted if the findings only surface after the commit lands. Lower-severity findings (`minor`, `info`) roll up into the standardized output; don't narrate those individually.
+
 ---
 
 ## Path B: MCP Unavailable (Fallback)

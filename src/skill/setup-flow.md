@@ -501,12 +501,22 @@ Only proceed to **1e. Execute on Approval** after the user selects "Create every
     Skip VERIFY when: static site, CLI, library, package, mobile-only, BaaS (no custom server).
     Skip BUILD when: Python, Go (compiled at test time).
 
+**Force-surface post-init MCP tools (Claude Code app).** Right after `storybloq_init` returns, call `ToolSearch(query: "storybloq", max_results: 20)`. The MCP server registers all 41 remaining tools when init completes, but some clients (notably Claude Code desktop/web) cache the pre-init tool list and only refresh when explicitly prompted. This one call makes `storybloq_phase_create`, `storybloq_ticket_create`, etc. dispatchable without a client restart. If `ToolSearch` returns only 2 tools (init + status), the full tool set didn't register server-side -- fall back to CLI via `Bash` (`storybloq phase create ...`, `storybloq ticket create ...`) and note in the summary that a client restart may be needed.
+
 2. Call `storybloq_phase_create` for each phase -- first phase with `atStart: true`, subsequent with `after: <previous-phase-id>`
 3. **Pass 1:** Call `storybloq_ticket_create` for each ticket WITHOUT `blockedBy` (ticket IDs don't exist until after creation)
 4. Call `storybloq_issue_create` for each imported GitHub issue
 5. **Pass 2:** Call `storybloq_ticket_update` for each ticket that has `blockedBy` dependencies, now that all IDs exist. Validate: no cycles, no self-references.
 6. Call `storybloq_ticket_update` to mark already-complete tickets as `complete`
 7. Call `storybloq_snapshot` to save initial baseline
+
+**Narrate every MCP call as it happens.** Bulk summaries ("51 tickets created") hide the mechanism and feel like magic (in a bad way). After each creation or update, surface a one-line visible narration to the user. Examples:
+- `-> storybloq · phase "foundation" created`
+- `-> storybloq · ticket T-003 "Supabase schema + RLS" created (phase: foundation)`
+- `-> storybloq · issue ISS-001 "Consistency budget" filed (severity: high)`
+- `-> storybloq · T-015 wired: blocked by T-010, T-014`
+
+This makes the file convention visible, turns the tools into a demo of themselves, and gives the user confidence that something real is happening under the hood. Keep each narration to one line; don't interleave with long prose.
 
 **CLAUDE.md generation:** If a brief/PRD was read in step 1b AND no `CLAUDE.md` exists in the project root, use `AskUserQuestion` for governance files:
 - question: "Write project governance files?"
@@ -541,6 +551,8 @@ Only proceed to **1e. Execute on Approval** after the user selects "Create every
 
 Show a preview of the generated content to the user. Only write after explicit approval.
 
+**Verify after write.** After the `Write` call completes, `Read` the file back and record its byte count. If the read fails, the write did not land -- the summary must say so ("CLAUDE.md write failed -- please create manually") rather than claim success. If the read succeeds, include the size in the summary ("CLAUDE.md created (2,814 chars)"). A hallucinated "created" is indistinguishable from a real one without this step; setup is the user's first impression of storybloq, so silent failures here are uniquely damaging.
+
 **If writing RULES.md**, generate capturing:
 - Domain-specific rules (e.g., "all monetary calculations use fixed-point arithmetic, not floats")
 - API design constraints (versioning, auth requirements, response format)
@@ -560,9 +572,29 @@ Same sanitization and preview rules as CLAUDE.md. Only write after explicit appr
 #### 1f. Post-Setup
 
 After creation completes:
-- Confirm what was created (e.g., "Created 5 phases, 18 tickets, 3 issues, CLAUDE.md, and RULES.md")
-- Check if `.gitignore` includes `.story/snapshots/` (warn if missing -- snapshots should not be committed)
-- Write an initial handover documenting the setup decisions. Explicitly capture which gates were answered and what was chosen: surface, characteristics, stack, system shape, execution model, deployment, data model, domain complexity, auth model, sensitive domain, quality checks level, AI pattern/provider/processing (if applicable), design source. This handover is the source of truth for decisions; CLAUDE.md is the project description.
+
+**Git check (autonomous mode depends on it).** Run `git rev-parse --show-toplevel` via `Bash`. If it errors, the directory is not a git repo, and autonomous mode will later refuse to start. Use `AskUserQuestion`:
+- question: "Initialize a git repo here? Autonomous mode requires it."
+- header: "Git"
+- options:
+  - "Yes, initialize (Recommended)" -- runs `git init` and seeds `.gitignore`
+  - "No, I'll handle it later"
+
+If the user picks "Yes":
+- Run `git init`
+- Create or append to `.gitignore`:
+  ```
+  .story/snapshots/
+  .story/sessions/
+  .story/status.json
+  ```
+- Narrate: `-> git · repository initialized at <path>`
+
+If the repo already exists, just verify `.gitignore` contains `.story/snapshots/` and `.story/sessions/` and append any missing entries.
+
+**Summary.** Confirm what was created. Use concrete, verified counts -- do not say "CLAUDE.md created" unless the post-write Read confirmed it; do not say "51 tickets created" unless every ticket-create call returned success. Example good summary: "Created 5 phases, 18 tickets, 3 issues, CLAUDE.md (2,814 chars), RULES.md (1,206 chars). Git repo initialized."
+
+**Initial handover.** Write an initial handover documenting the setup decisions. Explicitly capture which gates were answered and what was chosen: surface, characteristics, stack, system shape, execution model, deployment, data model, domain complexity, auth model, sensitive domain, quality checks level, AI pattern/provider/processing (if applicable), design source. This handover is the source of truth for decisions; CLAUDE.md is the project description.
 
 Present a brief completion message and tell the user how to start:
 

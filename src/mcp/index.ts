@@ -101,6 +101,18 @@ function registerDegradedTools(server: McpServer): void {
       degradedStatus.remove();
       degradedInit.remove();
       registerAllTools(server, result.root);
+      // Explicit tool-list-changed notification after the full swap. Each
+      // underlying registerTool / remove call already emits its own
+      // notification, but firing 43 notifications in rapid succession can
+      // cause some MCP clients (notably Claude Code app) to miss the
+      // coalesced final state. One final explicit notification is a
+      // belt-and-suspenders signal that the tool list is now complete
+      // so the client can do a single clean refetch.
+      try {
+        server.sendToolListChanged();
+      } catch (notifyErr: unknown) {
+        process.stderr.write(`storybloq: sendToolListChanged after init failed (non-fatal): ${notifyErr instanceof Error ? notifyErr.message : String(notifyErr)}\n`);
+      }
     } catch (swapErr: unknown) {
       process.stderr.write(`storybloq: tool-swap failed after init: ${swapErr instanceof Error ? swapErr.message : String(swapErr)}\n`);
       // Re-register degraded tools so the server isn't completely toolless.
@@ -125,7 +137,7 @@ function registerDegradedTools(server: McpServer): void {
     if (result.warnings.length > 0) {
       lines.push(`Warnings: ${result.warnings.join("; ")}`);
     }
-    lines.push("", "All storybloq tools are now available. Use storybloq_phase_create to add phases and storybloq_ticket_create to add tickets.");
+    lines.push("", "All 43 storybloq tools are now registered. If your MCP client still only shows storybloq_init + storybloq_status, the tool-list-changed notification was missed -- either retry the first post-init tool call (some clients refetch on error) or restart the MCP client. Use storybloq_phase_create to add phases and storybloq_ticket_create to add tickets.");
     return { content: [{ type: "text" as const, text: lines.join("\n") }] };
   });
 }

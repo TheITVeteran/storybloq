@@ -165,13 +165,24 @@ export async function runMcpReadTool(
       };
     }
 
-    // Build output with optional integrity warning prefix
+    // Build output with optional integrity warning prefix. Surface the
+    // specific offenders (file path + message) so the user or agent can
+    // investigate immediately instead of having to re-run
+    // storybloq_validate. C3 phantom-ticket cases (e.g. a stray T-052
+    // file from an interrupted session) will name themselves here.
     let text = result.output;
     const integrityWarnings = warnings.filter((w) =>
       (INTEGRITY_WARNING_TYPES as readonly string[]).includes(w.type),
     );
     if (integrityWarnings.length > 0) {
-      text = `Warning: ${integrityWarnings.length} item(s) skipped due to data integrity issues. Run storybloq_validate for details.\n\n${text}`;
+      const details = integrityWarnings
+        .slice(0, 5)
+        .map((w) => `  - ${w.file}: ${w.message}`)
+        .join("\n");
+      const more = integrityWarnings.length > 5
+        ? `\n  ... and ${integrityWarnings.length - 5} more. Run storybloq_validate for the full list.`
+        : "";
+      text = `Warning: ${integrityWarnings.length} item(s) skipped due to data integrity issues:\n${details}${more}\n\n${text}`;
     }
 
     return { content: [{ type: "text", text }] };
