@@ -31,7 +31,7 @@ export class HandoverStage implements WorkflowStage {
         'Call me with completedAction: "handover_written" and include the content in handoverContent.',
       ].join("\n"),
       reminders: [
-        "Before recording a new lesson, call claudestory_lesson_list to check existing lessons. Then choose: create (new insight), reinforce (existing lesson confirmed), update (refine wording), or skip.",
+        "Before recording a new lesson, call storybloq_lesson_list to check existing lessons. Then choose: create (new insight), reinforce (existing lesson confirmed), update (refine wording), or skip.",
       ],
       transitionedFrom: ctx.state.previousState ?? undefined,
     };

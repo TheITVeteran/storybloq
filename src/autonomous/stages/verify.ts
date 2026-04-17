@@ -90,7 +90,7 @@ export class VerifyStage implements WorkflowStage {
         `notes: ${JSON.stringify(endpoints.map((e) => ({ endpoint: e, status: "STATUS_CODE" })))}`,
         '```',
         "",
-        "Call `claudestory_autonomous_guide` with:",
+        "Call `storybloq_autonomous_guide` with:",
         '```json',
         `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "verify_done", "notes": "<paste the JSON array above with actual status codes>" } }`,
         '```',

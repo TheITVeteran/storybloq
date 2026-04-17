@@ -99,5 +99,5 @@ export async function writePermissionRequest(
   await writeFile(tmpPath, data, "utf-8");
   await rename(tmpPath, finalPath);
 
-  process.stderr.write(`claudestory: wrote permission request ${fields.requestId} to outbox\n`);
+  process.stderr.write(`storybloq: wrote permission request ${fields.requestId} to outbox\n`);
 }

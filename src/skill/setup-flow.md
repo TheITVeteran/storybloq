@@ -16,7 +16,7 @@ These rules govern the entire setup flow. Follow them at every gate.
 4. **Infer domain concerns from descriptions and entities, don't add gates.** If someone describes a collaborative whiteboard, detect realtime and generate websocket/presence tickets. If they describe a SaaS with pricing tiers, generate billing/subscription tickets. The interview captures *what*; the ticket generator knows *what that implies*.
 5. **Unrecognized types (Other):** ask architecture + deployment, skip domain-specific gates unless free-text mentions data or users.
 6. **Deployment recommendations are contextual, not stack-hardcoded.** Long-running processes, websockets, compliance, self-hosting preferences override the stack-based default.
-7. **Claude as recommended LLM is a product-opinionated choice.** claudestory is built on Claude. State this explicitly: "Claude is the product default for the claudestory ecosystem. Choose based on your needs."
+7. **Claude as recommended LLM is a product-opinionated choice.** storybloq is built on Claude. State this explicitly: "Claude is the product default for the storybloq ecosystem. Choose based on your needs."
 8. **Phrase gates as outcome decisions, not system jargon.** "How do users log in?" not "Auth model?" "What data does this system store?" not "Data layer?" "How should this go live?" not "Deployment target?"
 
 ## AI-Assisted Setup Flow
@@ -44,7 +44,7 @@ If none found (empty or near-empty directory) -> skip to **1c. New Project -- In
 
 #### 1b. Existing Project -- Analyze
 
-Before diving into analysis, briefly introduce claudestory to the user:
+Before diving into analysis, briefly introduce storybloq to the user:
 
 "Claude Story tracks your project's roadmap, tickets, issues, and session handovers in a `.story/` directory. Every Claude Code session starts by reading this context, so you never re-explain your project from scratch. Sessions build on each other: decisions, blockers, and lessons carry forward automatically. I'll analyze your project and propose a structure. You can adjust everything before I create anything."
 
@@ -274,7 +274,7 @@ Follow up: "Any secondary capabilities?" (multiSelect, optional). Same options m
 - question: "Which LLM provider?"
 - header: "LLM"
 - options:
-  - "Anthropic Claude (product default)" -- Claude API / Agent SDK. claudestory ecosystem default; choose based on your needs.
+  - "Anthropic Claude (product default)" -- Claude API / Agent SDK. storybloq ecosystem default; choose based on your needs.
   - "OpenAI" -- GPT models
   - "Google Gemini" -- multimodal, good pricing
   - "Self-hosted" -- Qwen, Llama, Mistral via Ollama/vLLM
@@ -454,11 +454,11 @@ Only proceed to **1e. Execute on Approval** after the user selects "Create every
 
 **Two-pass ticket creation:**
 
-1. Call `claudestory_init` with name, type, language -- after this, all MCP tools become available dynamically
+1. Call `storybloq_init` with name, type, language -- after this, all MCP tools become available dynamically
 
 1b. **Configure autonomous recipe stages** based on the quality check answer from Step 4g. Construct a JSON object and apply via Bash:
     ```
-    claudestory config set-overrides --json '<JSON>'
+    storybloq config set-overrides --json '<JSON>'
     ```
 
     **Quality level -> stage mapping:**
@@ -501,12 +501,12 @@ Only proceed to **1e. Execute on Approval** after the user selects "Create every
     Skip VERIFY when: static site, CLI, library, package, mobile-only, BaaS (no custom server).
     Skip BUILD when: Python, Go (compiled at test time).
 
-2. Call `claudestory_phase_create` for each phase -- first phase with `atStart: true`, subsequent with `after: <previous-phase-id>`
-3. **Pass 1:** Call `claudestory_ticket_create` for each ticket WITHOUT `blockedBy` (ticket IDs don't exist until after creation)
-4. Call `claudestory_issue_create` for each imported GitHub issue
-5. **Pass 2:** Call `claudestory_ticket_update` for each ticket that has `blockedBy` dependencies, now that all IDs exist. Validate: no cycles, no self-references.
-6. Call `claudestory_ticket_update` to mark already-complete tickets as `complete`
-7. Call `claudestory_snapshot` to save initial baseline
+2. Call `storybloq_phase_create` for each phase -- first phase with `atStart: true`, subsequent with `after: <previous-phase-id>`
+3. **Pass 1:** Call `storybloq_ticket_create` for each ticket WITHOUT `blockedBy` (ticket IDs don't exist until after creation)
+4. Call `storybloq_issue_create` for each imported GitHub issue
+5. **Pass 2:** Call `storybloq_ticket_update` for each ticket that has `blockedBy` dependencies, now that all IDs exist. Validate: no cycles, no self-references.
+6. Call `storybloq_ticket_update` to mark already-complete tickets as `complete`
+7. Call `storybloq_snapshot` to save initial baseline
 
 **CLAUDE.md generation:** If a brief/PRD was read in step 1b AND no `CLAUDE.md` exists in the project root, use `AskUserQuestion` for governance files:
 - question: "Write project governance files?"

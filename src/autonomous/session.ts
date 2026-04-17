@@ -211,7 +211,7 @@ export function readSessionResilient(dir: string): FullSessionState | null {
 
   const dropped = badIndices.size;
   process.stderr.write(
-    `[claudestory] readSessionResilient: dropped ${dropped} lensReviewHistory ` +
+    `[storybloq] readSessionResilient: dropped ${dropped} lensReviewHistory ` +
       `entr${dropped === 1 ? "y" : "ies"} with invalid disposition in ${dir}\n`,
   );
   return retry.data;

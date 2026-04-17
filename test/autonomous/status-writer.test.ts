@@ -216,7 +216,7 @@ describe("StatusWriter (T-264)", () => {
 
     it("active payload includes telemetry fields from session dir", () => {
       const telemetryDir = join(sessionDir, "telemetry");
-      writeFileSync(join(telemetryDir, "lastMcpCall"), "claudestory_status", "utf-8");
+      writeFileSync(join(telemetryDir, "lastMcpCall"), "storybloq_status", "utf-8");
       writeFileSync(join(telemetryDir, "alive"), String(Date.now()), "utf-8");
 
       const state = makeSessionState({ status: "active", state: "IMPLEMENT" });

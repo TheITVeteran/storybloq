@@ -46,7 +46,7 @@ export function writeResumeMarker(root: string, sessionId: string, state: {
     }
     lines.push(
       "",
-      "You MUST call `claudestory_autonomous_guide` with:",
+      "You MUST call `storybloq_autonomous_guide` with:",
       `{"sessionId": "${sessionId}", "action": "resume"}`,
       "",
       "Do NOT do any other work until you have called this.",

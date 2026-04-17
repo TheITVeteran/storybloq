@@ -28,7 +28,7 @@ Best workflow: single agent for deep reasoning first, then lenses for breadth/de
 
 ## Path A: MCP Available (Primary)
 
-Use this path when `claudestory_review_lenses_prepare` is available as an MCP tool.
+Use this path when `storybloq_review_lenses_prepare` is available as an MCP tool.
 
 ### Step 1: Determine review stage
 
@@ -43,7 +43,7 @@ Use this path when `claudestory_review_lenses_prepare` is available as an MCP to
 
 ### Step 3: Prepare the review
 
-Call `claudestory_review_lenses_prepare` with:
+Call `storybloq_review_lenses_prepare` with:
 ```json
 {
   "stage": "CODE_REVIEW",
@@ -83,7 +83,7 @@ Combine with cached findings from Step 3. For cached lenses, create a result ent
 
 ### Step 6: Synthesize
 
-Call `claudestory_review_lenses_synthesize` with:
+Call `storybloq_review_lenses_synthesize` with:
 ```json
 {
   "lensResults": [
@@ -105,7 +105,7 @@ Spawn one agent with the returned `mergerPrompt`. It deduplicates findings and i
 
 ### Step 8: Run judge
 
-Call `claudestory_review_lenses_judge` with:
+Call `storybloq_review_lenses_judge` with:
 ```json
 {
   "mergerResultRaw": "<raw JSON from merger agent>",

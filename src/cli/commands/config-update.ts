@@ -7,7 +7,7 @@ import type { CommandResult } from "../types.js";
 import type { OutputFormat } from "../../models/types.js";
 
 /**
- * Handle `claudestory config set-overrides`.
+ * Handle `storybloq config set-overrides`.
  *
  * Merge semantics: keys in --json overwrite existing, keys not provided are preserved.
  * Explicit null removes a key. --clear removes recipeOverrides entirely.

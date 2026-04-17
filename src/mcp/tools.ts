@@ -1,5 +1,5 @@
 /**
- * MCP tool registration and shared pipeline for claudestory tools.
+ * MCP tool registration and shared pipeline for storybloq tools.
  *
  * 32 tools (20 read + 12 write). Read tools use a shared pipeline:
  *   loadProject(root) → build CommandContext → call handler → classify result
@@ -171,7 +171,7 @@ export async function runMcpReadTool(
       (INTEGRITY_WARNING_TYPES as readonly string[]).includes(w.type),
     );
     if (integrityWarnings.length > 0) {
-      text = `Warning: ${integrityWarnings.length} item(s) skipped due to data integrity issues. Run claudestory_validate for details.\n\n${text}`;
+      text = `Warning: ${integrityWarnings.length} item(s) skipped due to data integrity issues. Run storybloq_validate for details.\n\n${text}`;
     }
 
     return { content: [{ type: "text", text }] };
@@ -225,19 +225,19 @@ export async function runMcpWriteTool(
 export function registerAllTools(server: McpServer, pinnedRoot: string): void {
   // --- No-arg tools ---
 
-  server.registerTool("claudestory_status", {
+  server.registerTool("storybloq_status", {
     description: "Project summary: phase statuses, ticket/issue counts, blockers, current phase",
   }, () => runMcpReadTool(pinnedRoot, handleStatus));
 
-  server.registerTool("claudestory_phase_list", {
+  server.registerTool("storybloq_phase_list", {
     description: "All phases with derived status (complete/inprogress/notstarted)",
   }, () => runMcpReadTool(pinnedRoot, handlePhaseList));
 
-  server.registerTool("claudestory_phase_current", {
+  server.registerTool("storybloq_phase_current", {
     description: "First non-complete phase with its description",
   }, () => runMcpReadTool(pinnedRoot, handlePhaseCurrent));
 
-  server.registerTool("claudestory_ticket_next", {
+  server.registerTool("storybloq_ticket_next", {
     description: "Highest-priority unblocked ticket(s) with unblock impact and umbrella progress",
     inputSchema: {
       count: z.number().int().min(1).max(10).optional()
@@ -247,15 +247,15 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     handleTicketNext(ctx, args.count ?? 1),
   ));
 
-  server.registerTool("claudestory_ticket_blocked", {
+  server.registerTool("storybloq_ticket_blocked", {
     description: "All blocked tickets with their blocking dependencies",
   }, () => runMcpReadTool(pinnedRoot, handleTicketBlocked));
 
-  server.registerTool("claudestory_handover_list", {
+  server.registerTool("storybloq_handover_list", {
     description: "List handover filenames (newest first)",
   }, () => runMcpReadTool(pinnedRoot, handleHandoverList));
 
-  server.registerTool("claudestory_handover_latest", {
+  server.registerTool("storybloq_handover_latest", {
     description: "Content of the most recent handover document(s)",
     inputSchema: {
       count: z.number().int().min(1).max(10).optional().describe("Number of recent handovers to return (default: 1)"),
@@ -264,17 +264,17 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     handleHandoverLatest(ctx, args.count ?? 1),
   ));
 
-  server.registerTool("claudestory_blocker_list", {
+  server.registerTool("storybloq_blocker_list", {
     description: "All roadmap blockers with dates and status",
   }, () => runMcpReadTool(pinnedRoot, handleBlockerList));
 
-  server.registerTool("claudestory_validate", {
+  server.registerTool("storybloq_validate", {
     description: "Reference integrity + schema checks on all .story/ files",
   }, () => runMcpReadTool(pinnedRoot, handleValidate));
 
   // --- Parameterized tools ---
 
-  server.registerTool("claudestory_phase_tickets", {
+  server.registerTool("storybloq_phase_tickets", {
     description: "Leaf tickets for a specific phase, sorted by order",
     inputSchema: {
       phaseId: z.string().describe("Phase ID (e.g. p5b, dogfood)"),
@@ -292,7 +292,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     return handlePhaseTickets(args.phaseId, ctx);
   }));
 
-  server.registerTool("claudestory_ticket_list", {
+  server.registerTool("storybloq_ticket_list", {
     description: "List leaf tickets with optional filters",
     inputSchema: {
       status: z.enum(TICKET_STATUSES).optional().describe("Filter by status: open, inprogress, complete"),
@@ -317,14 +317,14 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     );
   }));
 
-  server.registerTool("claudestory_ticket_get", {
+  server.registerTool("storybloq_ticket_get", {
     description: "Get a ticket by ID (includes umbrella tickets)",
     inputSchema: {
       id: z.string().regex(TICKET_ID_REGEX).describe("Ticket ID (e.g. T-001, T-079b)"),
     },
   }, (args) => runMcpReadTool(pinnedRoot, (ctx) => handleTicketGet(args.id, ctx)));
 
-  server.registerTool("claudestory_issue_list", {
+  server.registerTool("storybloq_issue_list", {
     description: "List issues with optional filters",
     inputSchema: {
       status: z.enum(ISSUE_STATUSES).optional().describe("Filter by status: open, inprogress, resolved"),
@@ -335,14 +335,14 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     handleIssueList({ status: args.status, severity: args.severity, component: args.component }, ctx),
   ));
 
-  server.registerTool("claudestory_issue_get", {
+  server.registerTool("storybloq_issue_get", {
     description: "Get an issue by ID",
     inputSchema: {
       id: z.string().regex(ISSUE_ID_REGEX).describe("Issue ID (e.g. ISS-001)"),
     },
   }, (args) => runMcpReadTool(pinnedRoot, (ctx) => handleIssueGet(args.id, ctx)));
 
-  server.registerTool("claudestory_handover_get", {
+  server.registerTool("storybloq_handover_get", {
     description: "Content of a specific handover document by filename",
     inputSchema: {
       filename: z.string().describe("Handover filename (e.g. 2026-03-20-session.md)"),
@@ -351,11 +351,11 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- T-084: Recap + Snapshot + Export ---
 
-  server.registerTool("claudestory_recap", {
+  server.registerTool("storybloq_recap", {
     description: "Session diff — changes since last snapshot + suggested next actions. Shows what changed and what to work on.",
   }, () => runMcpReadTool(pinnedRoot, handleRecap));
 
-  server.registerTool("claudestory_recommend", {
+  server.registerTool("storybloq_recommend", {
     description: "Context-aware ranked work suggestions mixing tickets and issues",
     inputSchema: {
       count: z.number().int().min(1).max(10).optional()
@@ -365,11 +365,11 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     handleRecommend(ctx, args.count ?? 5),
   ));
 
-  server.registerTool("claudestory_snapshot", {
+  server.registerTool("storybloq_snapshot", {
     description: "Save current project state for session diffs. Creates a snapshot in .story/snapshots/.",
   }, () => runMcpWriteTool(pinnedRoot, handleSnapshot));
 
-  server.registerTool("claudestory_export", {
+  server.registerTool("storybloq_export", {
     description: "Self-contained project document for sharing",
     inputSchema: {
       phase: z.string().optional().describe("Export a single phase by ID"),
@@ -393,7 +393,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     return runMcpReadTool(pinnedRoot, (ctx) => handleExport(ctx, mode as "all" | "phase", phaseId));
   });
 
-  server.registerTool("claudestory_handover_create", {
+  server.registerTool("storybloq_handover_create", {
     description: "Create a handover document from markdown content",
     inputSchema: {
       content: z.string().describe("Markdown content of the handover"),
@@ -413,7 +413,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Ticket write tools ---
 
-  server.registerTool("claudestory_ticket_create", {
+  server.registerTool("storybloq_ticket_create", {
     description: "Create a new ticket",
     inputSchema: {
       title: z.string().describe("Ticket title"),
@@ -438,7 +438,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     ),
   ));
 
-  server.registerTool("claudestory_ticket_update", {
+  server.registerTool("storybloq_ticket_update", {
     description: "Update an existing ticket",
     inputSchema: {
       id: z.string().regex(TICKET_ID_REGEX).describe("Ticket ID (e.g. T-001)"),
@@ -471,7 +471,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Issue write tools ---
 
-  server.registerTool("claudestory_issue_create", {
+  server.registerTool("storybloq_issue_create", {
     description: "Create a new issue",
     inputSchema: {
       title: z.string().describe("Issue title"),
@@ -498,7 +498,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     ),
   ));
 
-  server.registerTool("claudestory_issue_update", {
+  server.registerTool("storybloq_issue_update", {
     description: "Update an existing issue",
     inputSchema: {
       id: z.string().regex(ISSUE_ID_REGEX).describe("Issue ID (e.g. ISS-001)"),
@@ -535,7 +535,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Note tools ---
 
-  server.registerTool("claudestory_note_list", {
+  server.registerTool("storybloq_note_list", {
     description: "List notes with optional status/tag filters",
     inputSchema: {
       status: z.enum(NOTE_STATUSES).optional().describe("Filter by status: active, archived"),
@@ -545,14 +545,14 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     handleNoteList({ status: args.status, tag: args.tag }, ctx),
   ));
 
-  server.registerTool("claudestory_note_get", {
+  server.registerTool("storybloq_note_get", {
     description: "Get a note by ID",
     inputSchema: {
       id: z.string().regex(NOTE_ID_REGEX).describe("Note ID (e.g. N-001)"),
     },
   }, (args) => runMcpReadTool(pinnedRoot, (ctx) => handleNoteGet(args.id, ctx)));
 
-  server.registerTool("claudestory_note_create", {
+  server.registerTool("storybloq_note_create", {
     description: "Create a new note",
     inputSchema: {
       content: z.string().describe("Note content"),
@@ -571,7 +571,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     ),
   ));
 
-  server.registerTool("claudestory_note_update", {
+  server.registerTool("storybloq_note_update", {
     description: "Update an existing note",
     inputSchema: {
       id: z.string().regex(NOTE_ID_REGEX).describe("Note ID (e.g. N-001)"),
@@ -597,7 +597,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Lesson tools ---
 
-  server.registerTool("claudestory_lesson_list", {
+  server.registerTool("storybloq_lesson_list", {
     description: "List lessons with optional status/tag/source filters",
     inputSchema: {
       status: z.enum(LESSON_STATUSES).optional().describe("Filter by status: active, deprecated, superseded"),
@@ -608,19 +608,19 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     handleLessonList({ status: args.status, tag: args.tag, source: args.source }, ctx),
   ));
 
-  server.registerTool("claudestory_lesson_get", {
+  server.registerTool("storybloq_lesson_get", {
     description: "Get a lesson by ID",
     inputSchema: {
       id: z.string().regex(LESSON_ID_REGEX).describe("Lesson ID (e.g. L-001)"),
     },
   }, (args) => runMcpReadTool(pinnedRoot, (ctx) => handleLessonGet(args.id, ctx)));
 
-  server.registerTool("claudestory_lesson_digest", {
+  server.registerTool("storybloq_lesson_digest", {
     description: "Compiled ranked digest of active lessons — primary read interface for context loading",
     inputSchema: {},
   }, () => runMcpReadTool(pinnedRoot, (ctx) => handleLessonDigest(ctx)));
 
-  server.registerTool("claudestory_lesson_create", {
+  server.registerTool("storybloq_lesson_create", {
     description: "Create a new lesson",
     inputSchema: {
       title: z.string().describe("Lesson title — concise lesson name"),
@@ -645,7 +645,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     ),
   ));
 
-  server.registerTool("claudestory_lesson_update", {
+  server.registerTool("storybloq_lesson_update", {
     description: "Update an existing lesson",
     inputSchema: {
       id: z.string().regex(LESSON_ID_REGEX).describe("Lesson ID (e.g. L-001)"),
@@ -671,7 +671,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     ),
   ));
 
-  server.registerTool("claudestory_lesson_reinforce", {
+  server.registerTool("storybloq_lesson_reinforce", {
     description: "Reinforce a lesson — increment reinforcement count and update lastValidated date",
     inputSchema: {
       id: z.string().regex(LESSON_ID_REGEX).describe("Lesson ID (e.g. L-001)"),
@@ -682,7 +682,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Phase write tools ---
 
-  server.registerTool("claudestory_phase_create", {
+  server.registerTool("storybloq_phase_create", {
     description: "Create a new phase in the roadmap. Exactly one of after or atStart is required for positioning.",
     inputSchema: {
       id: z.string().describe("Phase ID — lowercase alphanumeric with hyphens (e.g. 'my-phase')"),
@@ -713,7 +713,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Selftest ---
 
-  server.registerTool("claudestory_selftest", {
+  server.registerTool("storybloq_selftest", {
     description: "Integration smoke test — creates, updates, and deletes test entities to verify the full pipeline",
   }, () => runMcpWriteTool(pinnedRoot, (root, format) =>
     handleSelftest(root, format),
@@ -721,7 +721,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Session report ---
 
-  server.registerTool("claudestory_session_report", {
+  server.registerTool("storybloq_session_report", {
     description: "Generate a structured analysis of an autonomous session — works even if project state is corrupted",
     inputSchema: {
       sessionId: z.string().uuid().describe("Session ID to analyze"),
@@ -743,7 +743,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Subprocess registry (T-261) ---
 
-  server.registerTool("claudestory_register_subprocess", {
+  server.registerTool("storybloq_register_subprocess", {
     description: "Register a running subprocess so monitors can distinguish slow builds from hung agents. Writes a per-PID file under the session's telemetry directory.",
     inputSchema: {
       pid: z.number().int().positive().describe("Process ID of the subprocess"),
@@ -777,7 +777,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     }
   });
 
-  server.registerTool("claudestory_unregister_subprocess", {
+  server.registerTool("storybloq_unregister_subprocess", {
     description: "Unregister a subprocess after it completes. Idempotent -- no error if the PID was already unregistered. Relaxed validation: works even on expired/terminal sessions to allow cleanup.",
     inputSchema: {
       pid: z.number().int().positive().describe("Process ID to unregister"),
@@ -801,7 +801,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // --- Autonomous guide ---
 
-  server.registerTool("claudestory_autonomous_guide", {
+  server.registerTool("storybloq_autonomous_guide", {
     description: "Autonomous session orchestrator. Call at every decision point during autonomous mode. Supports tiered access: auto (full autonomous), review (code review only), plan (plan + review), guided (single ticket end-to-end).",
     inputSchema: {
       sessionId: z.string().uuid().nullable().describe("Session ID (null for start action)"),
@@ -838,7 +838,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   // ── T-189: Multi-lens review MCP tools ─────────────────────
 
-  server.registerTool("claudestory_review_lenses_prepare", {
+  server.registerTool("storybloq_review_lenses_prepare", {
     description: "Prepare a multi-lens code/plan review. Returns lens prompts for the agent to spawn as parallel subagents. Handles activation, secrets gate, context packaging, and caching.",
     inputSchema: {
       stage: z.enum(["CODE_REVIEW", "PLAN_REVIEW"]).describe("Review stage"),
@@ -858,7 +858,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     }
   });
 
-  server.registerTool("claudestory_review_lenses_synthesize", {
+  server.registerTool("storybloq_review_lenses_synthesize", {
     description: "Synthesize lens results after parallel review. Validates findings, applies blocking policy, classifies origin (introduced vs pre-existing), auto-files pre-existing issues, generates merger prompt. Call after collecting all lens subagent results.",
     inputSchema: {
       stage: z.enum(["CODE_REVIEW", "PLAN_REVIEW"]).optional().describe("Review stage (defaults to CODE_REVIEW)"),
@@ -958,7 +958,7 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
     }
   });
 
-  server.registerTool("claudestory_review_lenses_judge", {
+  server.registerTool("storybloq_review_lenses_judge", {
     description: "Prepare the judge prompt for final verdict after merger. Applies verdict calibration rules and convergence tracking. Call after running the merger agent.",
     inputSchema: {
       mergerResultRaw: z.string().describe("Raw JSON string output from the merger agent"),

@@ -7,7 +7,7 @@ import { discoverProjectRoot } from "../../src/core/project-root-discovery.js";
 let root: string;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "claudestory-prd-"));
+  root = await mkdtemp(join(tmpdir(), "storybloq-prd-"));
   // Clear env var
   delete process.env.CLAUDESTORY_PROJECT_ROOT;
 });
@@ -57,7 +57,7 @@ describe("discoverProjectRoot", () => {
     );
 
     // Create a different project
-    const other = await mkdtemp(join(tmpdir(), "claudestory-other-"));
+    const other = await mkdtemp(join(tmpdir(), "storybloq-other-"));
     await mkdir(join(other, ".story"), { recursive: true });
     await writeFile(
       join(other, ".story", "config.json"),

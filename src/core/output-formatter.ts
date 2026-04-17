@@ -702,9 +702,9 @@ export function formatInitResult(
   }
   const lines = [`Initialized .story/ at ${escapeMarkdownInline(result.root)}`, "", ...result.created.map((f) => `  ${f}`)];
   if (result.warnings.length > 0) {
-    lines.push("", `Warning: ${result.warnings.length} corrupt file(s) found. Run \`claudestory validate\` to inspect.`);
+    lines.push("", `Warning: ${result.warnings.length} corrupt file(s) found. Run \`storybloq validate\` to inspect.`);
   }
-  lines.push("", "Tip: Run `claudestory setup-skill` to install the /story skill for Claude Code.");
+  lines.push("", "Tip: Run `storybloq setup-skill` to install the /story skill for Claude Code.");
   return lines.join("\n");
 }
 
@@ -773,7 +773,7 @@ export function formatRecap(
     // No snapshot fallback — show status + note
     lines.push(`# ${escapeMarkdownInline(state.config.project)} — Recap`);
     lines.push("");
-    lines.push("No snapshot found. Run `claudestory snapshot` to enable session diffs.");
+    lines.push("No snapshot found. Run `storybloq snapshot` to enable session diffs.");
     lines.push("");
     lines.push(`Tickets: ${state.completeLeafTicketCount}/${state.leafTicketCount} complete, ${state.blockedCount} blocked`);
     lines.push(`Issues: ${state.activeIssueCount} open`);
@@ -1282,7 +1282,7 @@ export function formatReference(
   }
 
   const lines: string[] = [];
-  lines.push("# claudestory Reference");
+  lines.push("# storybloq Reference");
   lines.push("");
   lines.push("## CLI Commands");
   lines.push("");
@@ -1316,31 +1316,31 @@ export function formatReference(
   lines.push("/story design android            # Evaluate against Material Design");
   lines.push("```");
   lines.push("");
-  lines.push("Creates issues automatically when claudestory MCP tools or CLI are available. Checks for existing design issues to avoid duplicates on repeated runs. Outputs markdown checklist as fallback when neither MCP nor CLI is available.");
+  lines.push("Creates issues automatically when storybloq MCP tools or CLI are available. Checks for existing design issues to avoid duplicates on repeated runs. Outputs markdown checklist as fallback when neither MCP nor CLI is available.");
   lines.push("");
   lines.push("## Common Workflows");
   lines.push("");
   lines.push("### Session Start");
-  lines.push("1. `claudestory status` — project overview");
-  lines.push("2. `claudestory recap` — what changed since last snapshot");
-  lines.push("3. `claudestory handover latest` — last session context");
-  lines.push("4. `claudestory ticket next` — what to work on");
+  lines.push("1. `storybloq status` — project overview");
+  lines.push("2. `storybloq recap` — what changed since last snapshot");
+  lines.push("3. `storybloq handover latest` — last session context");
+  lines.push("4. `storybloq ticket next` — what to work on");
   lines.push("");
   lines.push("### Session End");
-  lines.push("1. `claudestory snapshot` — save state for diffs");
-  lines.push("2. `claudestory handover create --content <md>` — write session handover");
+  lines.push("1. `storybloq snapshot` — save state for diffs");
+  lines.push("2. `storybloq handover create --content <md>` — write session handover");
   lines.push("");
   lines.push("### Project Setup");
-  lines.push("1. `npm install -g @anthropologies/claudestory` — install CLI");
-  lines.push("2. `claudestory setup-skill` — install /story skill for Claude Code");
-  lines.push("3. `claudestory init --name my-project` — initialize .story/ in your project");
+  lines.push("1. `npm install -g @storybloq/storybloq` — install CLI");
+  lines.push("2. `storybloq setup-skill` — install /story skill for Claude Code");
+  lines.push("3. `storybloq init --name my-project` — initialize .story/ in your project");
   lines.push("");
   lines.push("## Troubleshooting");
   lines.push("");
-  lines.push("- **MCP not connected:** Run `claude mcp add claudestory -s user -- claudestory --mcp`");
-  lines.push("- **CLI not found:** Run `npm install -g @anthropologies/claudestory`");
-  lines.push("- **Stale data:** Run `claudestory validate` to check integrity");
-  lines.push("- **/story not available:** Run `claudestory setup-skill` to install the skill");
+  lines.push("- **MCP not connected:** Run `claude mcp add storybloq -s user -- storybloq --mcp`");
+  lines.push("- **CLI not found:** Run `npm install -g @storybloq/storybloq`");
+  lines.push("- **Stale data:** Run `storybloq validate` to check integrity");
+  lines.push("- **/story not available:** Run `storybloq setup-skill` to install the skill");
 
   return lines.join("\n");
 }

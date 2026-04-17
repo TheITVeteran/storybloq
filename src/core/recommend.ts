@@ -167,7 +167,7 @@ function generateValidationSuggestions(
     {
       id: "validate",
       kind: "action",
-      title: "Run claudestory validate",
+      title: "Run storybloq validate",
       category: "validation_errors",
       reason: `${result.errorCount} validation error${result.errorCount === 1 ? "" : "s"} — fix before other work`,
       score: 1000,

@@ -5,29 +5,29 @@ description: Track tickets, issues, and progress for your project. Load project 
 
 # /story -- Project Context & Session Management
 
-claudestory tracks tickets, issues, roadmap, and handovers in a `.story/` directory so every AI coding session builds on the last instead of starting from zero.
+storybloq tracks tickets, issues, roadmap, and handovers in a `.story/` directory so every AI coding session builds on the last instead of starting from zero.
 
 ## Step 0.5: Active session guard (runs BEFORE argument routing)
 
 This guard runs on EVERY `/story` invocation regardless of subcommand (`/story`, `/story auto`, `/story review`, `/story plan`, `/story guided`, `/story handover`, `/story snapshot`, `/story export`, `/story design`, `/story review-lenses`, `/story settings`, `/story help`, `/story status`, etc.). It MUST complete before ANY other action in this invocation.
 
-**Guard prelude: force-surface deferred MCP tools.** Before running step 1 of this guard, make a single `ToolSearch` call with `query: "claudestory"` (max_results: 20). On Claude Code desktop/web, `claudestory_*` tool schemas are deferred — without this prelude the subsequent `claudestory_status` call in step 1 is not dispatchable. The prelude is explicitly part of the guard, not a separate pre-guard step; it satisfies the whitelist below.
+**Guard prelude: force-surface deferred MCP tools.** Before running step 1 of this guard, make a single `ToolSearch` call with `query: "storybloq"` (max_results: 20). On Claude Code desktop/web, `storybloq_*` tool schemas are deferred — without this prelude the subsequent `storybloq_status` call in step 1 is not dispatchable. The prelude is explicitly part of the guard, not a separate pre-guard step; it satisfies the whitelist below.
 
-- If `ToolSearch` itself is not available or returns an error on this harness, SKIP the prelude and continue to step 1. Do NOT treat a missing `ToolSearch` tool as evidence that MCP is unavailable — step 1's `claudestory_status` call will either succeed (MCP already surfaced) or its failure will route the skill to the Step 0 setup/CLI-fallback path below.
-- The prelude is idempotent: on terminal CLI sessions where `claudestory_*` tools are already in the base list, it simply returns the same tool set.
+- If `ToolSearch` itself is not available or returns an error on this harness, SKIP the prelude and continue to step 1. Do NOT treat a missing `ToolSearch` tool as evidence that MCP is unavailable — step 1's `storybloq_status` call will either succeed (MCP already surfaced) or its failure will route the skill to the Step 0 setup/CLI-fallback path below.
+- The prelude is idempotent: on terminal CLI sessions where `storybloq_*` tools are already in the base list, it simply returns the same tool set.
 
-**Whitelist semantics (not blacklist).** While the guard is unresolved, the ONLY actions permitted are: (a) the guard's `ToolSearch` prelude described above, (b) the guard's own `claudestory_status` call as defined in step 1 below, (c) reading the surfaced session metadata, and (d) the guard's `AskUserQuestion` flow. NO other MCP call, file write, file read, or skill-file dispatch is permitted -- this includes `claudestory_handover_create`, `claudestory_snapshot`, `claudestory_export`, `claudestory_ticket_create`, `claudestory_ticket_update`, `claudestory_issue_*`, `claudestory_note_*`, `claudestory_autonomous_guide` with any action other than the user-authorized `resume` / `cancel`, and any read or write inside `.story/sessions/<active-sessionId>/`. Subcommand-specific dispatch (to `autonomous-mode.md`, `design/design.md`, `review-lenses/review-lenses.md`, `setup-flow.md`, `reference.md`, etc.) is also blocked. The guard is a hard gate, not a soft warning.
+**Whitelist semantics (not blacklist).** While the guard is unresolved, the ONLY actions permitted are: (a) the guard's `ToolSearch` prelude described above, (b) the guard's own `storybloq_status` call as defined in step 1 below, (c) reading the surfaced session metadata, and (d) the guard's `AskUserQuestion` flow. NO other MCP call, file write, file read, or skill-file dispatch is permitted -- this includes `storybloq_handover_create`, `storybloq_snapshot`, `storybloq_export`, `storybloq_ticket_create`, `storybloq_ticket_update`, `storybloq_issue_*`, `storybloq_note_*`, `storybloq_autonomous_guide` with any action other than the user-authorized `resume` / `cancel`, and any read or write inside `.story/sessions/<active-sessionId>/`. Subcommand-specific dispatch (to `autonomous-mode.md`, `design/design.md`, `review-lenses/review-lenses.md`, `setup-flow.md`, `reference.md`, etc.) is also blocked. The guard is a hard gate, not a soft warning.
 
-1. Call `claudestory_status` once. If the output contains a `## Active Sessions` heading, OR any subsequent guide call in this invocation fails with an "existing session" / "resumable session" error, you must STOP and surface the situation to the user:
-   - Extract for each surfaced session: the **full `sessionId`** (required for every guide call), plus state, mode, and ticket (if any). Derive the displayed token `<T>` from the full `sessionId` per the Step 3 definition. If `claudestory_status` exposes only a truncated/rendered ID and no way to recover the full `sessionId` for a surfaced session (and the guide-error fallback in Step 3 also does not name a full `sessionId`), STOP. Do NOT offer Resume or Cancel. Tell the user: "A session appears to be active but its full `sessionId` cannot be recovered from the skill's tools. Please inspect `.story/sessions/` or run `claudestory session list` before retrying."
+1. Call `storybloq_status` once. If the output contains a `## Active Sessions` heading, OR any subsequent guide call in this invocation fails with an "existing session" / "resumable session" error, you must STOP and surface the situation to the user:
+   - Extract for each surfaced session: the **full `sessionId`** (required for every guide call), plus state, mode, and ticket (if any). Derive the displayed token `<T>` from the full `sessionId` per the Step 3 definition. If `storybloq_status` exposes only a truncated/rendered ID and no way to recover the full `sessionId` for a surfaced session (and the guide-error fallback in Step 3 also does not name a full `sessionId`), STOP. Do NOT offer Resume or Cancel. Tell the user: "A session appears to be active but its full `sessionId` cannot be recovered from the skill's tools. Please inspect `.story/sessions/` or run `storybloq session list` before retrying."
    - Render one **Active Autonomous Session** block per session (format defined in Step 3).
    - End with the session-aware `AskUserQuestion` defined in Step 3.
    - Until the user chooses, no other action is permitted (see whitelist semantics above).
    - Do NOT write any file under `.story/sessions/<active-sessionId>/`. That directory is owned by the running instance and any cross-instance write races with the owner.
 
-2. If there are no active sessions AND no subsequent "existing/resumable session" errors from any MCP call in this invocation, proceed to the "How to Handle Arguments" routing table and the rest of the normal flow. Reuse the `claudestory_status` response from this step when Step 2 asks for it; do NOT call `claudestory_status` again in the same invocation **except** in the Step 3 guide-error augmentation path explicitly described there.
+2. If there are no active sessions AND no subsequent "existing/resumable session" errors from any MCP call in this invocation, proceed to the "How to Handle Arguments" routing table and the rest of the normal flow. Reuse the `storybloq_status` response from this step when Step 2 asks for it; do NOT call `storybloq_status` again in the same invocation **except** in the Step 3 guide-error augmentation path explicitly described there.
 
-3. **Re-trigger rule for `start`.** Any later `claudestory_autonomous_guide` call with `action: "start"` in the SAME `/story` invocation MUST re-run Step 0.5 from the top first, regardless of any prior user choices in this invocation. The guard's prior resolution authorizes only the specific Resume/Cancel/Other branch chosen at that moment; it never authorizes starting a new autonomous session later.
+3. **Re-trigger rule for `start`.** Any later `storybloq_autonomous_guide` call with `action: "start"` in the SAME `/story` invocation MUST re-run Step 0.5 from the top first, regardless of any prior user choices in this invocation. The guard's prior resolution authorizes only the specific Resume/Cancel/Other branch chosen at that moment; it never authorizes starting a new autonomous session later.
 
 This guard has precedence over every "do not ask the user" rule elsewhere in this skill file and in `autonomous-mode.md`. Foreign-session resume or cancel ALWAYS requires explicit user confirmation through `AskUserQuestion`.
 
@@ -36,78 +36,78 @@ This guard has precedence over every "do not ask the user" rule elsewhere in thi
 `/story` is one smart command. Parse the user's intent from context:
 
 - `/story` -> full context load (default, see Step 2 below)
-- `/story auto` -> start autonomous mode (read `autonomous-mode.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`)
+- `/story auto` -> start autonomous mode (read `autonomous-mode.md` in the same directory as this skill file; if not found, tell user to run `storybloq setup-skill`)
 - `/story auto T-183 T-184 ISS-077` -> start targeted autonomous mode with ONLY those items in order (read `autonomous-mode.md`; pass the IDs as `targetWork` array in the start call)
-- `/story review T-XXX` -> start review mode for a ticket (read `autonomous-mode.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`)
-- `/story plan T-XXX` -> start plan mode for a ticket (read `autonomous-mode.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`)
-- `/story handover` -> draft a session handover. Summarize the session's work, then call `claudestory_handover_create` with the drafted content and a descriptive slug
-- `/story snapshot` -> save project state (call `claudestory_snapshot` MCP tool)
-- `/story export` -> export project for sharing. Ask the user whether to export the current phase or the full project, then call `claudestory_export` with either `phase` or `all` set
-- `/story status` -> quick status check (call `claudestory_status` MCP tool)
+- `/story review T-XXX` -> start review mode for a ticket (read `autonomous-mode.md` in the same directory as this skill file; if not found, tell user to run `storybloq setup-skill`)
+- `/story plan T-XXX` -> start plan mode for a ticket (read `autonomous-mode.md` in the same directory as this skill file; if not found, tell user to run `storybloq setup-skill`)
+- `/story handover` -> draft a session handover. Summarize the session's work, then call `storybloq_handover_create` with the drafted content and a descriptive slug
+- `/story snapshot` -> save project state (call `storybloq_snapshot` MCP tool)
+- `/story export` -> export project for sharing. Ask the user whether to export the current phase or the full project, then call `storybloq_export` with either `phase` or `all` set
+- `/story status` -> quick status check (call `storybloq_status` MCP tool)
 - `/story settings` -> manage project settings (see Settings section below)
-- `/story design` -> evaluate frontend design (read `design/design.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`)
+- `/story design` -> evaluate frontend design (read `design/design.md` in the same directory as this skill file; if not found, tell user to run `storybloq setup-skill`)
 - `/story design <platform>` -> evaluate for specific platform: web, ios, macos, android (read `design/design.md` in the same directory as this skill file)
-- `/story review-lenses` -> run multi-lens review on current diff (read `review-lenses/review-lenses.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`). Note: the autonomous guide invokes lenses automatically when `reviewBackends` includes `"lenses"` -- this command is for manual/debug use.
-- `/story help` -> show all capabilities (read `reference.md` in the same directory as this skill file; if not found, tell user to run `claudestory setup-skill`)
+- `/story review-lenses` -> run multi-lens review on current diff (read `review-lenses/review-lenses.md` in the same directory as this skill file; if not found, tell user to run `storybloq setup-skill`). Note: the autonomous guide invokes lenses automatically when `reviewBackends` includes `"lenses"` -- this command is for manual/debug use.
+- `/story help` -> show all capabilities (read `reference.md` in the same directory as this skill file; if not found, tell user to run `storybloq setup-skill`)
 
 If the user's intent doesn't match any of these, use the full context load.
 
 ## Step 0: Check Setup
 
-Check if the claudestory MCP tools are available.
+Check if the storybloq MCP tools are available.
 
-**Deferred tools note (Claude Code app).** Claude Code desktop/web may register MCP tools at session start but defer exposing their full schemas to your tool list until you explicitly request them. A naive "look for `claudestory_status` in available tools" check fails on a cold session even when the MCP server is healthy and connected, routing the skill to the CLI fallback unnecessarily. The Step 0.5 guard prelude above (the `ToolSearch` call) has already force-surfaced any deferred tools by this point, so this step only needs to check the current tool list:
+**Deferred tools note (Claude Code app).** Claude Code desktop/web may register MCP tools at session start but defer exposing their full schemas to your tool list until you explicitly request them. A naive "look for `storybloq_status` in available tools" check fails on a cold session even when the MCP server is healthy and connected, routing the skill to the CLI fallback unnecessarily. The Step 0.5 guard prelude above (the `ToolSearch` call) has already force-surfaced any deferred tools by this point, so this step only needs to check the current tool list:
 
-1. **Check for claudestory MCP tools in your tool list.** If any `claudestory_*` tools (for example `claudestory_status`) are present, MCP is available -- proceed to Step 1.
-2. **If no `claudestory_*` tools are present**, try a second `ToolSearch` call with `query: "claudestory"` (max_results: 20) as a safety net in case the guard prelude was skipped or failed silently. If the response lists any `claudestory_*` tools, proceed to Step 1.
+1. **Check for storybloq MCP tools in your tool list.** If any `storybloq_*` tools (for example `storybloq_status`) are present, MCP is available -- proceed to Step 1.
+2. **If no `storybloq_*` tools are present**, try a second `ToolSearch` call with `query: "storybloq"` (max_results: 20) as a safety net in case the guard prelude was skipped or failed silently. If the response lists any `storybloq_*` tools, proceed to Step 1.
 3. **If `ToolSearch` is unavailable on this harness OR returned no matches**, MCP is genuinely unavailable -- continue with the setup/fallback path below. Missing `ToolSearch` is never by itself evidence that MCP is broken; it just means the harness exposes tools differently.
 
 **If MCP tools are NOT available:**
 
-1. Check if the `claudestory` CLI is installed: run `claudestory --version` via Bash
+1. Check if the `storybloq` CLI is installed: run `storybloq --version` via Bash
 2. If NOT installed:
    - Check `node --version` and `npm --version` -- both must be available
    - If Node.js is missing, tell the user to install Node.js 20+ first
-   - Otherwise, with user permission, run: `npm install -g @anthropologies/claudestory`
-   - Then run: `claude mcp add claudestory -s user -- claudestory --mcp`
+   - Otherwise, with user permission, run: `npm install -g @storybloq/storybloq`
+   - Then run: `claude mcp add storybloq -s user -- storybloq --mcp`
    - Tell the user to restart Claude Code and run `/story` again
 3. If CLI IS installed but MCP not registered:
-   - With user permission, run: `claude mcp add claudestory -s user -- claudestory --mcp`
+   - With user permission, run: `claude mcp add storybloq -s user -- storybloq --mcp`
    - Tell the user to restart Claude Code and run `/story` again
 
 **Important:** Always use `npm install -g`, never `npx`, for the CLI. The MCP server needs the global binary.
 
 **If MCP tools are unavailable and user doesn't want to set up**, fall back to CLI mode:
-- Run `claudestory status` via Bash
-- Run `claudestory recap` via Bash
-- Run `claudestory handover latest` via Bash
+- Run `storybloq status` via Bash
+- Run `storybloq recap` via Bash
+- Run `storybloq handover latest` via Bash
 - Read `RULES.md` if it exists in the project root
-- Run `claudestory lesson digest` via Bash
+- Run `storybloq lesson digest` via Bash
 - Run `git log --oneline -10`
 - Then continue to Step 3 below
 
 ## Step 1: Check Project
 
 - If `.story/` exists in the current working directory (or a parent) -> proceed to Step 2
-- If no `.story/` but project indicators exist (code, manifest, .git) -> read `setup-flow.md` in the same directory as this skill file and follow the AI-Assisted Setup Flow (if not found, tell user to run `claudestory setup-skill`)
-- If no `.story/` and no project indicators -> explain what claudestory is and suggest navigating to a project
+- If no `.story/` but project indicators exist (code, manifest, .git) -> read `setup-flow.md` in the same directory as this skill file and follow the AI-Assisted Setup Flow (if not found, tell user to run `storybloq setup-skill`)
+- If no `.story/` and no project indicators -> explain what storybloq is and suggest navigating to a project
 
 ## Step 2: Load Context (Default /story Behavior)
 
 Call these in order:
 
-1. **Project status** -- call `claudestory_status` MCP tool
-2. **Session recap** -- call `claudestory_recap` MCP tool (shows changes since last snapshot)
-3. **Recent handovers** -- call `claudestory_handover_latest` MCP tool with `count: 3` (last 3 sessions' context -- ensures reasoning behind recent decisions is preserved, not just the latest session's state)
+1. **Project status** -- call `storybloq_status` MCP tool
+2. **Session recap** -- call `storybloq_recap` MCP tool (shows changes since last snapshot)
+3. **Recent handovers** -- call `storybloq_handover_latest` MCP tool with `count: 3` (last 3 sessions' context -- ensures reasoning behind recent decisions is preserved, not just the latest session's state)
 4. **Development rules** -- read `RULES.md` if it exists in the project root
-5. **Lessons learned** -- call `claudestory_lesson_digest` MCP tool
+5. **Lessons learned** -- call `storybloq_lesson_digest` MCP tool
 6. **Recent commits** -- run `git log --oneline -10`
 
 ## Step 2b: Empty Scaffold Check
 
-After `claudestory_status` returns, check in order:
+After `storybloq_status` returns, check in order:
 
-1. **Integrity guard** -- if the response starts with "Warning:" and contains "item(s) skipped due to data integrity issues", this is NOT an empty scaffold. Tell the user to run `claudestory validate`. Continue Step 2/3 normally.
+1. **Integrity guard** -- if the response starts with "Warning:" and contains "item(s) skipped due to data integrity issues", this is NOT an empty scaffold. Tell the user to run `storybloq validate`. Continue Step 2/3 normally.
 2. **Scaffold detection** -- check BOTH: output contains "## Getting Started" AND shows `Tickets: 0/0 complete` + `Handovers: 0`. If met AND the project has code indicators (git history, package manifest, source files), read `setup-flow.md` in the same directory as this skill file and follow the AI-Assisted Setup Flow (section 1b). After setup completes, restart Step 2 from the top (the project now has data to load).
 3. **Empty without code** -- if scaffold detected but no code indicators (truly empty directory), continue to Step 3 which will show: "Your project is set up but has no tickets yet. Would you like me to help you create your first phase and tickets?"
 
@@ -123,9 +123,9 @@ All guide calls (`action: "resume"`, `action: "cancel"`) MUST pass the full `ses
 
 If the guard fired via a guide error path, apply these rules in order:
 
-1. If the error names exactly ONE blocking full `sessionId`, use that full `sessionId` directly as the sole session token and render `Resume <full-sessionId>` / `Cancel <full-sessionId>` from the error. Do NOT depend on `claudestory_status` for this path -- the blocking session may be stale or resumable and absent from the status scan while still being what the guide error refers to.
-2. Optionally, re-call `claudestory_status` to augment the banner with state/ticket/mode details. If the status response includes the same sessionId, use the enriched info for the banner; if not, render the banner with only the sessionId and the error's description.
-3. If the error does NOT name a resolvable full `sessionId` AND `claudestory_status` returns no matching session, STOP. Do NOT offer any Resume or Cancel action in that state. Tell the user: "A session appears to block this action but cannot be safely identified. Please inspect `.story/sessions/` or run `claudestory session list` before retrying."
+1. If the error names exactly ONE blocking full `sessionId`, use that full `sessionId` directly as the sole session token and render `Resume <full-sessionId>` / `Cancel <full-sessionId>` from the error. Do NOT depend on `storybloq_status` for this path -- the blocking session may be stale or resumable and absent from the status scan while still being what the guide error refers to.
+2. Optionally, re-call `storybloq_status` to augment the banner with state/ticket/mode details. If the status response includes the same sessionId, use the enriched info for the banner; if not, render the banner with only the sessionId and the error's description.
+3. If the error does NOT name a resolvable full `sessionId` AND `storybloq_status` returns no matching session, STOP. Do NOT offer any Resume or Cancel action in that state. Tell the user: "A session appears to block this action but cannot be safely identified. Please inspect `.story/sessions/` or run `storybloq session list` before retrying."
 
 **Part 1: Conversational intro (2-3 sentences)**
 
@@ -135,7 +135,7 @@ Open with the project name and progress. Mention what the last session accomplis
 
 You MUST show the following tables after the prose intro. Do not summarize them in paragraph form.
 
-**Ready to Work table** -- call `claudestory_recommend` for context-aware suggestions. Always render as a markdown table:
+**Ready to Work table** -- call `storybloq_recommend` for context-aware suggestions. Always render as a markdown table:
 
 ```
 ## Ready to Work
@@ -218,13 +218,13 @@ Do NOT render Ready to Work, Decisions Pending, Open Issues, Key Rules, or the F
 - "Monitor -- read-only, don't interfere (Recommended)"
   -> READ-ONLY PAUSE (no guide calls unless the nested follow-up question below selects Resume or Cancel). Re-render the Active Autonomous Session banner only. Do NOT show Ready to Work. Do NOT call the guide. Do NOT write to the session's directory. End with a follow-up `AskUserQuestion` whose options are exactly: "Resume `<T>`", "Cancel `<T>`", and "Back" (returns to the previous question without action). The guard remains in force on any subsequent `/story` invocation.
 - "Resume `<T>` -- take over (only safe if the owning instance is gone)"
-  -> call `claudestory_autonomous_guide` with `action: "resume"` and the full `sessionId` that `<T>` resolves to. The guide arbitrates the lease and will fail if another instance still holds it. This selection IS the explicit user authorization that `autonomous-mode.md`'s recovery instructions require FOR THAT SPECIFIC `sessionId` ONLY.
+  -> call `storybloq_autonomous_guide` with `action: "resume"` and the full `sessionId` that `<T>` resolves to. The guide arbitrates the lease and will fail if another instance still holds it. This selection IS the explicit user authorization that `autonomous-mode.md`'s recovery instructions require FOR THAT SPECIFIC `sessionId` ONLY.
 - "Cancel `<T>` -- destructive"
   -> Ask the user to type `cancel <T>` to confirm. **Match rules:** trim leading/trailing whitespace, then require an exact lowercase match of the literal string `cancel <T>` where `<T>` matches the displayed token character-for-character (case-sensitive). Any other input -- including `Cancel <T>`, `cancel  <T>` (extra whitespace inside), `cancel <full-sessionId>` when the displayed token was a prefix, or `back` -- aborts the cancel flow and returns to the guard's top-level question without calling the guide. On a matching confirmation, call the guide with `action: "cancel"` and the full `sessionId` that `<T>` resolves to. Only after the cancel succeeds may the agent proceed to normal `/story` flow.
 - (Other always available) -- user may type a specific ticket ID to work on. If they do:
   - Treat the named ticket as explicitly user-chosen.
-  - Proceed with a **collaborative single-ticket flow**: read the ticket via `claudestory_ticket_get`, discuss, and work on it directly with the user in this session.
-  - Do NOT call `claudestory_autonomous_guide` with `action: "start"` as part of accepting this branch. Starting a new autonomous session while another is live defeats the guard. If the user later asks to "go autonomous on this ticket" mid-flow, the re-trigger rule in Step 0.5 item 3 applies: re-run Step 0.5 from the top before any `action: "start"` call.
+  - Proceed with a **collaborative single-ticket flow**: read the ticket via `storybloq_ticket_get`, discuss, and work on it directly with the user in this session.
+  - Do NOT call `storybloq_autonomous_guide` with `action: "start"` as part of accepting this branch. Starting a new autonomous session while another is live defeats the guard. If the user later asks to "go autonomous on this ticket" mid-flow, the re-trigger rule in Step 0.5 item 3 applies: re-run Step 0.5 from the top before any `action: "start"` call.
   - Do NOT write to any `.story/sessions/<active-sessionId>/` directory. Normal project-level writes (tickets, issues, code) are fine.
   - Do NOT auto-pick or auto-suggest a ticket; act only on the name the user typed.
 
@@ -257,15 +257,15 @@ Never auto-select. Never skip the question. Never write to any active session's 
 
 **Never modify or overwrite existing handover files.** Handovers are append-only historical records. Always create new handover files -- never edit, replace, or write to an existing one. If you need to correct something from a previous session, create a new handover that references the correction. This prevents accidental data loss during sessions.
 
-Before writing a handover at the end of a session, run `claudestory snapshot` first. This ensures the next session's recap can show what changed. If `setup-skill` has been run, a PreCompact hook auto-takes snapshots before context compaction.
+Before writing a handover at the end of a session, run `storybloq snapshot` first. This ensures the next session's recap can show what changed. If `setup-skill` has been run, a PreCompact hook auto-takes snapshots before context compaction.
 
-**Lessons** capture non-obvious process learnings that should carry forward across sessions. At the end of a significant session, review what you learned and create lessons via `claudestory_lesson_create` for:
+**Lessons** capture non-obvious process learnings that should carry forward across sessions. At the end of a significant session, review what you learned and create lessons via `storybloq_lesson_create` for:
 - Patterns that worked (or failed) and why
 - Architecture decisions with non-obvious rationale
 - Tool/framework quirks discovered during implementation
 - Process improvements (review workflows, testing strategies)
 
-Don't duplicate what's already in the handover -- lessons are structured, tagged, and ranked. Handovers are narrative. Use `claudestory_lesson_digest` to check existing lessons before creating duplicates. Use `claudestory_lesson_reinforce` when an existing lesson proves true again.
+Don't duplicate what's already in the handover -- lessons are structured, tagged, and ranked. Handovers are narrative. Use `storybloq_lesson_digest` to check existing lessons before creating duplicates. Use `storybloq_lesson_reinforce` when an existing lesson proves true again.
 
 ## Ticket and Issue Discipline
 
@@ -278,7 +278,7 @@ Don't duplicate what's already in the handover -- lessons are structured, tagged
 
 **Issues** are discovered problems -- bugs, inconsistencies, gaps, risks found during work. If you're not sure whether something is a ticket or an issue, make it an issue. It can be promoted to a ticket later.
 
-When working on a task and you encounter a bug, inconsistency, or improvement opportunity that is out of scope for the current ticket, create an issue using `claudestory issue create` (CLI) with a clear title, severity, and impact description. Don't fix it in the current task, don't ignore it -- log it. This keeps the issue tracker growing organically and ensures nothing discovered during work is lost.
+When working on a task and you encounter a bug, inconsistency, or improvement opportunity that is out of scope for the current ticket, create an issue using `storybloq issue create` (CLI) with a clear title, severity, and impact description. Don't fix it in the current task, don't ignore it -- log it. This keeps the issue tracker growing organically and ensures nothing discovered during work is lost.
 
 When starting work on a ticket, update its status to `inprogress`. When done, update to `complete` in the same commit as the code change.
 
@@ -291,15 +291,15 @@ When starting work on a ticket, update its status to `inprogress`. When done, up
 Ticket and issue create/update operations are available via both CLI and MCP tools. Delete remains CLI-only.
 
 CLI examples:
-- `claudestory ticket create --title "..." --type task --phase p0`
-- `claudestory ticket update T-001 --status complete`
-- `claudestory issue create --title "..." --severity high --impact "..."`
+- `storybloq ticket create --title "..." --type task --phase p0`
+- `storybloq ticket update T-001 --status complete`
+- `storybloq issue create --title "..." --severity high --impact "..."`
 
 MCP examples:
-- `claudestory_ticket_create` with `title`, `type`, and optional `phase`, `description`, `blockedBy`, `parentTicket`
-- `claudestory_ticket_update` with `id` and optional `status`, `title`, `order`, `description`, `phase`, `parentTicket`
-- `claudestory_issue_create` with `title`, `severity`, `impact`, and optional `components`, `relatedTickets`, `location`, `phase`
-- `claudestory_issue_update` with `id` and optional `status`, `title`, `severity`, `impact`, `resolution`, `components`, `relatedTickets`, `location`
+- `storybloq_ticket_create` with `title`, `type`, and optional `phase`, `description`, `blockedBy`, `parentTicket`
+- `storybloq_ticket_update` with `id` and optional `status`, `title`, `order`, `description`, `phase`, `parentTicket`
+- `storybloq_issue_create` with `title`, `severity`, `impact`, and optional `components`, `relatedTickets`, `location`, `phase`
+- `storybloq_issue_update` with `id` and optional `status`, `title`, `severity`, `impact`, `resolution`, `components`, `relatedTickets`, `location`
 
 Read operations (list, get, next, blocked) are available via both CLI and MCP.
 
@@ -307,11 +307,11 @@ Read operations (list, get, next, blocked) are available via both CLI and MCP.
 
 **Notes** are unstructured brainstorming artifacts -- ideas, design thinking, "what if" explorations. Use notes when the content doesn't fit tickets (planned work) or issues (discovered problems).
 
-Create notes via CLI: `claudestory note create --content "..." --tags idea`
+Create notes via CLI: `storybloq note create --content "..." --tags idea`
 
-Create notes via MCP: `claudestory_note_create` with `content`, optional `title` and `tags`.
+Create notes via MCP: `storybloq_note_create` with `content`, optional `title` and `tags`.
 
-List, get, and update notes via MCP: `claudestory_note_list`, `claudestory_note_get`, `claudestory_note_update`. Delete remains CLI-only: `claudestory note delete <id>`.
+List, get, and update notes via MCP: `storybloq_note_list`, `storybloq_note_get`, `storybloq_note_update`. Delete remains CLI-only: `storybloq note delete <id>`.
 
 ## Settings (/story settings)
 
@@ -387,19 +387,19 @@ options: "Every ticket", "Every 3 tickets (default)", "Every 5 tickets", "Manual
 
 **Step 4: Apply changes.** Run via Bash:
 ```
-claudestory config set-overrides --json '<constructed JSON>'
+storybloq config set-overrides --json '<constructed JSON>'
 ```
 
 **IMPORTANT:** The `--json` argument takes only the `recipeOverrides` object, NOT the full config. Top-level fields (version, project, type, language) are NOT settable via this command.
 ```
 # Correct:
-claudestory config set-overrides --json '{"maxTicketsPerSession": 10}'
+storybloq config set-overrides --json '{"maxTicketsPerSession": 10}'
 
 # Correct (stages):
-claudestory config set-overrides --json '{"stages": {"VERIFY": {"enabled": true}}}'
+storybloq config set-overrides --json '{"stages": {"VERIFY": {"enabled": true}}}'
 
 # WRONG -- do not include top-level fields:
-claudestory config set-overrides --json '{"version": 2, "project": "foo"}'
+storybloq config set-overrides --json '{"version": 2, "project": "foo"}'
 ```
 
 Show a confirmation of what changed, then ask if the user wants to change anything else or is done. If done, return to normal session.

@@ -2,9 +2,9 @@
  * MCP tool handlers for the multi-lens review system.
  *
  * Three tools that wrap the orchestrator's programmatic logic:
- * - claudestory_review_lenses_prepare: activation, secrets, context, cache, prompts
- * - claudestory_review_lenses_synthesize: validation, blocking, origin/scope tagging
- * - claudestory_review_lenses_judge: verdict calibration, convergence
+ * - storybloq_review_lenses_prepare: activation, secrets, context, cache, prompts
+ * - storybloq_review_lenses_synthesize: validation, blocking, origin/scope tagging
+ * - storybloq_review_lenses_judge: verdict calibration, convergence
  *
  * The agent owns LLM orchestration (spawning subagents). These tools own the
  * programmatic logic that should not be reimplemented in prose instructions.

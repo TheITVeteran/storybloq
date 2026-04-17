@@ -335,7 +335,7 @@ export async function handleTicketDelete(
 ): Promise<CommandResult> {
   if (force) {
     process.stderr.write(
-      `Warning: force-deleting ${id} may leave dangling references. Run \`claudestory validate\` to check.\n`,
+      `Warning: force-deleting ${id} may leave dangling references. Run \`storybloq validate\` to check.\n`,
     );
   }
   await deleteTicket(id, root, { force });

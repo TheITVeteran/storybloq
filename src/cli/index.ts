@@ -3,7 +3,7 @@
 export {};
 
 // --mcp flag: start MCP server instead of CLI.
-// Enables one-line registration: claude mcp add claudestory -- npx -y @anthropologies/claudestory --mcp
+// Enables one-line registration: claude mcp add storybloq -- npx -y @storybloq/storybloq --mcp
 if (!process.argv.includes("--mcp")) {
   await runCli();
 } else {
@@ -60,7 +60,7 @@ async function runCli(): Promise<void> {
   const errorFormat = sniffFormat(rawArgs);
 
   let cli = yargs(rawArgs)
-    .scriptName("claudestory")
+    .scriptName("storybloq")
     .version(version)
     .strict()
     .demandCommand(1, "Specify a command. Run with --help for available commands.")

@@ -15,7 +15,7 @@ let handoversDir: string;
 let warnings: LoadWarning[];
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "claudestory-hp-"));
+  root = await mkdtemp(join(tmpdir(), "storybloq-hp-"));
   handoversDir = join(root, ".story", "handovers");
   await mkdir(handoversDir, { recursive: true });
   warnings = [];

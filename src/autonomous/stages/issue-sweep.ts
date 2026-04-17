@@ -71,7 +71,7 @@ export class IssueSweepStage implements WorkflowStage {
         `Severity: ${firstIssue.severity}`,
         firstIssue.impact ? `Impact: ${firstIssue.impact}` : "",
         "",
-        `When done, call \`claudestory_autonomous_guide\` with:`,
+        `When done, call \`storybloq_autonomous_guide\` with:`,
         '```json',
         `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "issue_fixed", "notes": "..." } }`,
         '```',

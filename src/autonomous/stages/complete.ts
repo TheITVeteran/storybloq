@@ -266,8 +266,8 @@ export class CompleteStage implements WorkflowStage {
           candidatesText,
           "",
           topCandidate
-            ? `Pick **${topCandidate.ticket.id}** (highest priority) by calling \`claudestory_autonomous_guide\` now:`
-            : "Pick a ticket by calling `claudestory_autonomous_guide` now:",
+            ? `Pick **${topCandidate.ticket.id}** (highest priority) by calling \`storybloq_autonomous_guide\` now:`
+            : "Pick a ticket by calling `storybloq_autonomous_guide` now:",
           '```json',
           topCandidate
             ? `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "${topCandidate.ticket.id}" } }`

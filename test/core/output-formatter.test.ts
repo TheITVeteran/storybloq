@@ -481,7 +481,7 @@ describe("formatInitResult", () => {
   it("MD shows warning when corrupt files found", () => {
     const md = formatInitResult({ root: "/tmp/test", created: [".story/config.json"], warnings: [".story/tickets/T-099.json"] }, "md");
     expect(md).toContain("1 corrupt file(s) found");
-    expect(md).toContain("claudestory validate");
+    expect(md).toContain("storybloq validate");
   });
 
   it("JSON includes warnings array", () => {

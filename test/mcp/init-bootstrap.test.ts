@@ -82,7 +82,7 @@ describe("init bootstrap — MCP degraded mode flow", () => {
 
     await initProject(dir, { name: "empty", phases: [] });
 
-    // Simulate what claudestory_status would do
+    // Simulate what storybloq_status would do
     const { handleStatus } = await import("../../src/cli/commands/status.js");
     const { state, warnings } = await loadProject(dir);
     const ctx = {

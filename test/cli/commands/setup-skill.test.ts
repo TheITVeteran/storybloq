@@ -319,7 +319,7 @@ describe("setup-skill", () => {
   it("autonomous-mode.md contains autonomous and tiered mode sections", async () => {
     const content = await readFile(join(PROJECT_ROOT, "src", "skill", "autonomous-mode.md"), "utf-8");
     expect(content).toContain("## Autonomous Mode");
-    expect(content).toContain("claudestory_autonomous_guide");
+    expect(content).toContain("storybloq_autonomous_guide");
     expect(content).toContain("### `/story review T-XXX`");
     expect(content).toContain("### `/story plan T-XXX`");
     expect(content).toContain("### `/story guided T-XXX`");
@@ -331,7 +331,7 @@ describe("setup-skill", () => {
     expect(content).not.toContain("#### 1a. Detect Project Type");
     expect(content).not.toContain("#### 1b. Existing Project");
     // Autonomous mode should not be inline
-    expect(content).not.toContain("claudestory_autonomous_guide");
+    expect(content).not.toContain("storybloq_autonomous_guide");
     expect(content).not.toContain("PICK_TICKET");
   });
 
@@ -428,7 +428,7 @@ describe("copyDirRecursive", () => {
   let destDir: string;
 
   beforeEach(async () => {
-    tempDir = join(tmpdir(), `claudestory-copy-test-${randomUUID()}`);
+    tempDir = join(tmpdir(), `storybloq-copy-test-${randomUUID()}`);
     srcDir = join(tempDir, "src");
     destDir = join(tempDir, "dest");
     // Create a source tree: file at root + file in subdirectory
@@ -500,7 +500,7 @@ describe("registerPreCompactHook", () => {
   let settingsPath: string;
 
   beforeEach(async () => {
-    tempDir = join(tmpdir(), `claudestory-hook-test-${randomUUID()}`);
+    tempDir = join(tmpdir(), `storybloq-hook-test-${randomUUID()}`);
     await mkdir(tempDir, { recursive: true });
     settingsPath = join(tempDir, "settings.json");
   });
@@ -509,7 +509,7 @@ describe("registerPreCompactHook", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  const FAKE_BIN = "/fake/claudestory";
+  const FAKE_BIN = "/fake/storybloq";
 
   async function importHook() {
     const { registerPreCompactHook } = await import("../../../src/cli/commands/setup-skill.js");
@@ -719,43 +719,43 @@ describe("formatHookCommand", () => {
   it("does not quote a clean POSIX path", async () => {
     if (process.platform === "win32") return;
     const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
-    expect(formatHookCommand("/usr/local/bin/claudestory", "hook-status"))
-      .toBe("/usr/local/bin/claudestory hook-status");
+    expect(formatHookCommand("/usr/local/bin/storybloq", "hook-status"))
+      .toBe("/usr/local/bin/storybloq hook-status");
   });
 
   it("single-quote-wraps a POSIX path with a space", async () => {
     if (process.platform === "win32") return;
     const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
-    expect(formatHookCommand("/path with space/claudestory", "hook-status"))
-      .toBe("'/path with space/claudestory' hook-status");
+    expect(formatHookCommand("/path with space/storybloq", "hook-status"))
+      .toBe("'/path with space/storybloq' hook-status");
   });
 
   it("escapes embedded single quote on POSIX", async () => {
     if (process.platform === "win32") return;
     const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
-    expect(formatHookCommand("/weird'path/claudestory", "hook-status"))
-      .toBe("'/weird'\\''path/claudestory' hook-status");
+    expect(formatHookCommand("/weird'path/storybloq", "hook-status"))
+      .toBe("'/weird'\\''path/storybloq' hook-status");
   });
 
   it("quotes POSIX path with shell metachar", async () => {
     if (process.platform === "win32") return;
     const { formatHookCommand } = await import("../../../src/cli/commands/setup-skill.js");
-    expect(formatHookCommand("/has&amp/claudestory", "hook-status"))
-      .toBe("'/has&amp/claudestory' hook-status");
+    expect(formatHookCommand("/has&amp/storybloq", "hook-status"))
+      .toBe("'/has&amp/storybloq' hook-status");
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveClaudestoryBin (ISS-560)
+// resolveStorybloqBin (ISS-560)
 // ---------------------------------------------------------------------------
 
-describe("resolveClaudestoryBin", () => {
+describe("resolveStorybloqBin", () => {
   let tempDir: string;
   let originalPath: string | undefined;
   let originalHome: string | undefined;
 
   beforeEach(async () => {
-    tempDir = join(tmpdir(), `claudestory-resolve-${randomUUID()}`);
+    tempDir = join(tmpdir(), `storybloq-resolve-${randomUUID()}`);
     await mkdir(tempDir, { recursive: true });
     originalPath = process.env.PATH;
     originalHome = process.env.HOME;
@@ -774,52 +774,52 @@ describe("resolveClaudestoryBin", () => {
     process.env.PATH = "";
     // Redirect HOME to a dir with no candidate binaries.
     process.env.HOME = tempDir;
-    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
-    expect(resolveClaudestoryBin()).toBe(null);
+    const { resolveStorybloqBin } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(resolveStorybloqBin()).toBe(null);
   });
 
   it("finds executable on PATH", async () => {
     if (process.platform === "win32") return;
     const binDir = join(tempDir, "bin");
     await mkdir(binDir, { recursive: true });
-    const binPath = join(binDir, "claudestory");
+    const binPath = join(binDir, "storybloq");
     await writeFile(binPath, "#!/bin/sh\necho hi\n", "utf-8");
     const { chmod } = await import("node:fs/promises");
     await chmod(binPath, 0o755);
     process.env.PATH = binDir;
     process.env.HOME = tempDir;
-    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
-    expect(resolveClaudestoryBin()).toBe(binPath);
+    const { resolveStorybloqBin } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(resolveStorybloqBin()).toBe(binPath);
   });
 
-  it("skips non-executable claudestory entry on PATH", async () => {
+  it("skips non-executable storybloq entry on PATH", async () => {
     if (process.platform === "win32") return;
     const binDir = join(tempDir, "bin");
     await mkdir(binDir, { recursive: true });
-    const binPath = join(binDir, "claudestory");
+    const binPath = join(binDir, "storybloq");
     // Write a file that is readable but not executable.
     await writeFile(binPath, "not-executable", "utf-8");
     const { chmod } = await import("node:fs/promises");
     await chmod(binPath, 0o644);
     process.env.PATH = binDir;
     process.env.HOME = tempDir;
-    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
-    expect(resolveClaudestoryBin()).toBe(null);
+    const { resolveStorybloqBin } = await import("../../../src/cli/commands/setup-skill.js");
+    expect(resolveStorybloqBin()).toBe(null);
   });
 
   it("prefers PATH match over candidate list", async () => {
     if (process.platform === "win32") return;
     const pathBinDir = join(tempDir, "path-bin");
     await mkdir(pathBinDir, { recursive: true });
-    const pathBin = join(pathBinDir, "claudestory");
+    const pathBin = join(pathBinDir, "storybloq");
     await writeFile(pathBin, "#!/bin/sh\n", "utf-8");
     const { chmod } = await import("node:fs/promises");
     await chmod(pathBin, 0o755);
     process.env.PATH = pathBinDir;
     process.env.HOME = tempDir;
-    const { resolveClaudestoryBin } = await import("../../../src/cli/commands/setup-skill.js");
+    const { resolveStorybloqBin } = await import("../../../src/cli/commands/setup-skill.js");
     // PATH-level match should win regardless of candidate list contents.
-    expect(resolveClaudestoryBin()).toBe(pathBin);
+    expect(resolveStorybloqBin()).toBe(pathBin);
   });
 });
 
@@ -830,10 +830,10 @@ describe("resolveClaudestoryBin", () => {
 describe("registerStopHook", () => {
   let tempDir: string;
   let settingsPath: string;
-  const FAKE_BIN = "/fake/claudestory";
+  const FAKE_BIN = "/fake/storybloq";
 
   beforeEach(async () => {
-    tempDir = join(tmpdir(), `claudestory-stop-hook-${randomUUID()}`);
+    tempDir = join(tmpdir(), `storybloq-stop-hook-${randomUUID()}`);
     await mkdir(tempDir, { recursive: true });
     settingsPath = join(tempDir, "settings.json");
   });
@@ -898,10 +898,10 @@ describe("registerStopHook", () => {
 describe("registerSessionStartHook", () => {
   let tempDir: string;
   let settingsPath: string;
-  const FAKE_BIN = "/fake/claudestory";
+  const FAKE_BIN = "/fake/storybloq";
 
   beforeEach(async () => {
-    tempDir = join(tmpdir(), `claudestory-start-hook-${randomUUID()}`);
+    tempDir = join(tmpdir(), `storybloq-start-hook-${randomUUID()}`);
     await mkdir(tempDir, { recursive: true });
     settingsPath = join(tempDir, "settings.json");
   });
@@ -928,7 +928,7 @@ describe("registerSessionStartHook", () => {
     expect(start[0]!.hooks[0]!.command).toBe(`${FAKE_BIN} session resume-prompt`);
   });
 
-  it("preserves non-claudestory SessionStart hooks with matcher 'compact'", async () => {
+  it("preserves non-storybloq SessionStart hooks with matcher 'compact'", async () => {
     await writeFile(settingsPath, JSON.stringify({
       hooks: {
         SessionStart: [
@@ -964,7 +964,7 @@ describe("migrateLegacyHookVariants", () => {
   let settingsPath: string;
 
   beforeEach(async () => {
-    tempDir = join(tmpdir(), `claudestory-migrate-${randomUUID()}`);
+    tempDir = join(tmpdir(), `storybloq-migrate-${randomUUID()}`);
     await mkdir(tempDir, { recursive: true });
     settingsPath = join(tempDir, "settings.json");
   });
@@ -990,13 +990,13 @@ describe("migrateLegacyHookVariants", () => {
     return groups.flatMap((g) => g.hooks.map((h) => h.command));
   }
 
-  it("removes bare `claudestory` command when newCommand is absolute", async () => {
-    await seed("PreCompact", ["claudestory session compact-prepare"]);
+  it("removes bare `storybloq` command when newCommand is absolute", async () => {
+    await seed("PreCompact", ["storybloq session compact-prepare"]);
     const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
     const count = await migrateLegacyHookVariants(
       "PreCompact",
       "session compact-prepare",
-      "/new/bin/claudestory session compact-prepare",
+      "/new/bin/storybloq session compact-prepare",
       settingsPath,
     );
     expect(count).toBe(1);
@@ -1004,19 +1004,19 @@ describe("migrateLegacyHookVariants", () => {
   });
 
   it("removes stale absolute path that no longer matches", async () => {
-    await seed("PreCompact", ["/old/v20/bin/claudestory session compact-prepare"]);
+    await seed("PreCompact", ["/old/v20/bin/storybloq session compact-prepare"]);
     const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
     const count = await migrateLegacyHookVariants(
       "PreCompact",
       "session compact-prepare",
-      "/new/v22/bin/claudestory session compact-prepare",
+      "/new/v22/bin/storybloq session compact-prepare",
       settingsPath,
     );
     expect(count).toBe(1);
   });
 
   it("preserves exact-match newCommand (idempotent)", async () => {
-    const cmd = "/new/bin/claudestory session compact-prepare";
+    const cmd = "/new/bin/storybloq session compact-prepare";
     await seed("PreCompact", [cmd]);
     const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
     const count = await migrateLegacyHookVariants(
@@ -1029,28 +1029,28 @@ describe("migrateLegacyHookVariants", () => {
     expect(await remainingCommands("PreCompact")).toEqual([cmd]);
   });
 
-  it("preserves other-tool command (basename !== claudestory)", async () => {
+  it("preserves other-tool command (basename !== storybloq)", async () => {
     const cmd = "/other/bin/mytool session compact-prepare";
     await seed("PreCompact", [cmd]);
     const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
     const count = await migrateLegacyHookVariants(
       "PreCompact",
       "session compact-prepare",
-      "/new/bin/claudestory session compact-prepare",
+      "/new/bin/storybloq session compact-prepare",
       settingsPath,
     );
     expect(count).toBe(0);
     expect(await remainingCommands("PreCompact")).toEqual([cmd]);
   });
 
-  it("preserves claudestory with extra flag (rest !== subcommand)", async () => {
-    const cmd = "claudestory session compact-prepare --extra-flag";
+  it("preserves storybloq with extra flag (rest !== subcommand)", async () => {
+    const cmd = "storybloq session compact-prepare --extra-flag";
     await seed("PreCompact", [cmd]);
     const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
     const count = await migrateLegacyHookVariants(
       "PreCompact",
       "session compact-prepare",
-      "/new/bin/claudestory session compact-prepare",
+      "/new/bin/storybloq session compact-prepare",
       settingsPath,
     );
     expect(count).toBe(0);
@@ -1059,13 +1059,13 @@ describe("migrateLegacyHookVariants", () => {
 
   it("handles quoted path with space", async () => {
     if (process.platform === "win32") return;
-    const cmd = "'/path with space/claudestory' session compact-prepare";
+    const cmd = "'/path with space/storybloq' session compact-prepare";
     await seed("PreCompact", [cmd]);
     const { migrateLegacyHookVariants } = await import("../../../src/cli/commands/setup-skill.js");
     const count = await migrateLegacyHookVariants(
       "PreCompact",
       "session compact-prepare",
-      "/new/bin/claudestory session compact-prepare",
+      "/new/bin/storybloq session compact-prepare",
       settingsPath,
     );
     expect(count).toBe(1);
@@ -1078,7 +1078,7 @@ describe("migrateLegacyHookVariants", () => {
     const count = await migrateLegacyHookVariants(
       "PreCompact",
       "session compact-prepare",
-      "/new/bin/claudestory session compact-prepare",
+      "/new/bin/storybloq session compact-prepare",
       settingsPath,
     );
     expect(count).toBe(0);

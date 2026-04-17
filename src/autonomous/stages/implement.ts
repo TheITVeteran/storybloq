@@ -22,7 +22,7 @@ export class ImplementStage implements WorkflowStage {
         "",
         `Implement the approved plan at \`${planPath}\`.`,
         "",
-        "When done, call `claudestory_autonomous_guide` with:",
+        "When done, call `storybloq_autonomous_guide` with:",
         '```json',
         `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "implementation_done" } }`,
         '```',
@@ -30,7 +30,7 @@ export class ImplementStage implements WorkflowStage {
       reminders: [
         "Follow the plan exactly. Do NOT deviate without re-planning.",
         "Do NOT ask the user for confirmation.",
-        "If you discover pre-existing bugs, failing tests not caused by your changes, or other out-of-scope problems, file them as issues using claudestory_issue_create. Do not fix them inline.",
+        "If you discover pre-existing bugs, failing tests not caused by your changes, or other out-of-scope problems, file them as issues using storybloq_issue_create. Do not fix them inline.",
         "Track which files you create or modify. Only these files should be staged at commit time.",
       ],
       transitionedFrom: ctx.state.previousState ?? undefined,

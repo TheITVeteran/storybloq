@@ -117,8 +117,8 @@ export function buildTargetedPickInstruction(
     : `{ "sessionId": "${sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "T-XXX" } }`;
 
   const pickPrompt = firstReady
-    ? `Pick **${firstReady.id}** (next target) by calling \`claudestory_autonomous_guide\` now:`
-    : "Pick a target by calling `claudestory_autonomous_guide` now:";
+    ? `Pick **${firstReady.id}** (next target) by calling \`storybloq_autonomous_guide\` now:`
+    : "Pick a target by calling `storybloq_autonomous_guide` now:";
 
   return [
     "## Targeted Work Items",
@@ -150,7 +150,7 @@ export function buildTargetedStuckHandover(
     "",
     "Write a session handover documenting what was accomplished and why the remaining targets could not be worked.",
     "",
-    'Call `claudestory_autonomous_guide` with:',
+    'Call `storybloq_autonomous_guide` with:',
     "```json",
     `{ "sessionId": "${sessionId}", "action": "report", "report": { "completedAction": "handover_written", "handoverContent": "..." } }`,
     "```",

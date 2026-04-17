@@ -82,7 +82,7 @@ afterEach(async () => {
 });
 
 async function createTestSession(state: FullSessionState): Promise<string> {
-  testRoot = await mkdtemp(join(tmpdir(), "claudestory-compact-"));
+  testRoot = await mkdtemp(join(tmpdir(), "storybloq-compact-"));
   const sessDir = join(testRoot, ".story", "sessions", state.sessionId);
   mkdirSync(sessDir, { recursive: true });
   writeSessionSync(sessDir, state);
@@ -184,7 +184,7 @@ describe("prepareForCompact", () => {
 
 describe("findResumableSession", () => {
   it("finds compactPending session matching workspace", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-compact-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-compact-"));
     const sessDir = join(testRoot, ".story", "sessions", "00000000-0000-0000-0000-000000000001");
     mkdirSync(sessDir, { recursive: true });
 
@@ -205,7 +205,7 @@ describe("findResumableSession", () => {
   });
 
   it("ignores sessions > 1hr old (returns stale flag)", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-compact-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-compact-"));
     const sessDir = join(testRoot, ".story", "sessions", "00000000-0000-0000-0000-000000000001");
     mkdirSync(sessDir, { recursive: true });
 
@@ -226,7 +226,7 @@ describe("findResumableSession", () => {
   });
 
   it("returns null when no compactPending sessions exist", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-compact-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-compact-"));
     const sessDir = join(testRoot, ".story", "sessions", "00000000-0000-0000-0000-000000000001");
     mkdirSync(sessDir, { recursive: true });
 
@@ -238,7 +238,7 @@ describe("findResumableSession", () => {
   });
 
   it("returns null when no .story/sessions exists", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-compact-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-compact-"));
     // No .story/ directory
     const result = findResumableSession(testRoot);
     expect(result).toBeNull();
@@ -251,7 +251,7 @@ describe("findResumableSession", () => {
 
 describe("findActiveSessionFull with compactPending", () => {
   it("returns compactPending sessions (single-session invariant preserved)", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-compact-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-compact-"));
     const sessDir = join(testRoot, ".story", "sessions", "00000000-0000-0000-0000-000000000001");
     mkdirSync(sessDir, { recursive: true });
 

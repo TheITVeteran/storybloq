@@ -10,7 +10,7 @@ const PROJECT_ROOT = join(__dirname, "..", "..", "..");
 describe("reference command", () => {
   it("handleReference md format produces output", () => {
     const output = handleReference("md");
-    expect(output).toContain("# claudestory Reference");
+    expect(output).toContain("# storybloq Reference");
     expect(output).toContain("## CLI Commands");
     expect(output).toContain("## MCP Tools");
     expect(output).toContain("## Common Workflows");
@@ -70,31 +70,31 @@ describe("reference command", () => {
 
   it("MCP_TOOLS registry covers all expected tools", () => {
     const names = MCP_TOOLS.map((t) => t.name);
-    expect(names).toContain("claudestory_status");
-    expect(names).toContain("claudestory_phase_list");
-    expect(names).toContain("claudestory_phase_current");
-    expect(names).toContain("claudestory_phase_tickets");
-    expect(names).toContain("claudestory_ticket_list");
-    expect(names).toContain("claudestory_ticket_get");
-    expect(names).toContain("claudestory_ticket_next");
-    expect(names).toContain("claudestory_ticket_blocked");
-    expect(names).toContain("claudestory_issue_list");
-    expect(names).toContain("claudestory_issue_get");
-    expect(names).toContain("claudestory_handover_list");
-    expect(names).toContain("claudestory_handover_latest");
-    expect(names).toContain("claudestory_handover_get");
-    expect(names).toContain("claudestory_handover_create");
-    expect(names).toContain("claudestory_blocker_list");
-    expect(names).toContain("claudestory_validate");
-    expect(names).toContain("claudestory_recap");
-    expect(names).toContain("claudestory_snapshot");
-    expect(names).toContain("claudestory_export");
-    expect(names).toContain("claudestory_lesson_list");
-    expect(names).toContain("claudestory_lesson_get");
-    expect(names).toContain("claudestory_lesson_digest");
-    expect(names).toContain("claudestory_lesson_create");
-    expect(names).toContain("claudestory_lesson_update");
-    expect(names).toContain("claudestory_lesson_reinforce");
+    expect(names).toContain("storybloq_status");
+    expect(names).toContain("storybloq_phase_list");
+    expect(names).toContain("storybloq_phase_current");
+    expect(names).toContain("storybloq_phase_tickets");
+    expect(names).toContain("storybloq_ticket_list");
+    expect(names).toContain("storybloq_ticket_get");
+    expect(names).toContain("storybloq_ticket_next");
+    expect(names).toContain("storybloq_ticket_blocked");
+    expect(names).toContain("storybloq_issue_list");
+    expect(names).toContain("storybloq_issue_get");
+    expect(names).toContain("storybloq_handover_list");
+    expect(names).toContain("storybloq_handover_latest");
+    expect(names).toContain("storybloq_handover_get");
+    expect(names).toContain("storybloq_handover_create");
+    expect(names).toContain("storybloq_blocker_list");
+    expect(names).toContain("storybloq_validate");
+    expect(names).toContain("storybloq_recap");
+    expect(names).toContain("storybloq_snapshot");
+    expect(names).toContain("storybloq_export");
+    expect(names).toContain("storybloq_lesson_list");
+    expect(names).toContain("storybloq_lesson_get");
+    expect(names).toContain("storybloq_lesson_digest");
+    expect(names).toContain("storybloq_lesson_create");
+    expect(names).toContain("storybloq_lesson_update");
+    expect(names).toContain("storybloq_lesson_reinforce");
   });
 
   it("reference.md matches handleReference output (drift detection)", () => {
@@ -107,14 +107,14 @@ describe("reference command", () => {
   it("every command has a usage string", () => {
     for (const cmd of COMMANDS) {
       expect(cmd.usage).toBeTruthy();
-      expect(cmd.usage).toContain("claudestory");
+      expect(cmd.usage).toContain("storybloq");
     }
   });
 
   it("every MCP tool has a description", () => {
     for (const tool of MCP_TOOLS) {
       expect(tool.description).toBeTruthy();
-      expect(tool.name).toMatch(/^claudestory_/);
+      expect(tool.name).toMatch(/^storybloq_/);
     }
   });
 });
