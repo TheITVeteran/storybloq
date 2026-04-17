@@ -330,8 +330,11 @@ describe("setup-skill", () => {
     // Setup flow should not be inline
     expect(content).not.toContain("#### 1a. Detect Project Type");
     expect(content).not.toContain("#### 1b. Existing Project");
-    // Autonomous mode should not be inline
-    expect(content).not.toContain("storybloq_autonomous_guide");
+    // Autonomous mode section should not be inline. Check the section heading
+    // and a state-machine identifier rather than the tool name -- the tool
+    // name appears in the Step 0.5 guard whitelist (legitimately, it tells
+    // agents what NOT to call) and in /story auto command help.
+    expect(content).not.toContain("## Autonomous Mode");
     expect(content).not.toContain("PICK_TICKET");
   });
 
