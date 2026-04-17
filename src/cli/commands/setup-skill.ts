@@ -634,6 +634,19 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
     }
   }
 
+  // ISS-570 G3: write a version marker so subsequent CLI invocations can
+  // detect when the skill dir is stale after a 'npm install -g ...' bump
+  // and auto-refresh without making the user re-run setup-skill manually.
+  try {
+    const { writeSkillMarker } = await import("../../core/skill-version-marker.js");
+    const pkgJson = JSON.parse(
+      await readFile(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")
+    ) as { version?: string };
+    if (pkgJson.version) writeSkillMarker(pkgJson.version);
+  } catch {
+    // Marker write is best-effort; skill still works without it.
+  }
+
   log(`${existed ? "Updated" : "Installed"} /story skill at ${skillDir}/`);
   log(`  ${writtenFiles.join(" + ")} written`);
   if (missingFiles.length > 0) {

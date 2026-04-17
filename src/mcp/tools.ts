@@ -238,7 +238,29 @@ export function registerAllTools(server: McpServer, pinnedRoot: string): void {
 
   server.registerTool("storybloq_status", {
     description: "Project summary: phase statuses, ticket/issue counts, blockers, current phase",
-  }, () => runMcpReadTool(pinnedRoot, handleStatus));
+  }, async () => {
+    const result = await runMcpReadTool(pinnedRoot, handleStatus);
+    // ISS-570 G2: prepend update-available notice so /story's first MCP
+    // call surfaces 'newer storybloq available' proactively. Synchronous
+    // cache read; a background refresh is kicked off so the NEXT status
+    // call has fresh data. Dev builds skip the check.
+    try {
+      const { readUpdateCacheSync, refreshUpdateCacheInBackground } = await import("../core/update-check.js");
+      const running = process.env.CLAUDESTORY_VERSION ?? "0.0.0-dev";
+      const info = readUpdateCacheSync(running);
+      refreshUpdateCacheInBackground();
+      if (info?.updateAvailable && result.content[0]?.type === "text") {
+        const banner = `A newer storybloq is available (v${info.latestVersion}). Run \`npm install -g @storybloq/storybloq@latest\` -- the CLI will auto-refresh the /story skill on next invocation.\n\n`;
+        return {
+          ...result,
+          content: [{ type: "text" as const, text: banner + (result.content[0] as { text: string }).text }],
+        };
+      }
+    } catch {
+      // Update check is best-effort; never block status output.
+    }
+    return result;
+  });
 
   server.registerTool("storybloq_phase_list", {
     description: "All phases with derived status (complete/inprogress/notstarted)",

@@ -1,0 +1,168 @@
+/**
+ * ISS-570: Update-notifier for the storybloq CLI + MCP server.
+ *
+ * On every CLI invocation and in storybloq_status, we want to know whether
+ * a newer @storybloq/storybloq exists on the npm registry. We cache the
+ * registry answer for 24 hours in a small JSON file so the check costs at
+ * most one HTTP request per day per user.
+ *
+ * Cache location: ~/.claude/storybloq/update-check.json
+ *   (hidden from git-scoped .story/ by being outside the project)
+ *
+ * Design:
+ * - Network call is best-effort. Any failure (offline, registry down,
+ *   timeout) silently returns null. Updates are opt-in helpful, not
+ *   required for correctness.
+ * - The CLI banner and MCP status use the same cache, so they don't
+ *   double-hit the registry.
+ * - Semver compare is done via a minimal inline comparator (no new deps).
+ */
+
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+const NPM_REGISTRY_URL = "https://registry.npmjs.org/@storybloq/storybloq/latest";
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const FETCH_TIMEOUT_MS = 2000; // Short timeout so CLI startup is never delayed.
+
+interface UpdateCache {
+  latestVersion: string;
+  fetchedAt: number; // ms since epoch
+}
+
+/** Public shape returned from checkForUpdate. */
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+}
+
+function cachePath(): string {
+  return join(homedir(), ".claude", "storybloq", "update-check.json");
+}
+
+function readCache(): UpdateCache | null {
+  try {
+    const p = cachePath();
+    if (!existsSync(p)) return null;
+    const data = JSON.parse(readFileSync(p, "utf-8")) as UpdateCache;
+    if (typeof data.latestVersion !== "string" || typeof data.fetchedAt !== "number") {
+      return null;
+    }
+    if (Date.now() - data.fetchedAt > CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(latestVersion: string): void {
+  try {
+    const p = cachePath();
+    mkdirSync(join(homedir(), ".claude", "storybloq"), { recursive: true });
+    const data: UpdateCache = { latestVersion, fetchedAt: Date.now() };
+    writeFileSync(p, JSON.stringify(data, null, 2), "utf-8");
+  } catch {
+    // Cache write is best-effort.
+  }
+}
+
+async function fetchLatestFromNpm(): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const res = await fetch(NPM_REGISTRY_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { version?: unknown };
+    return typeof body.version === "string" ? body.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Simple semver comparator. Returns:
+ *   -1 if a < b, 0 if a === b, 1 if a > b.
+ * Ignores pre-release suffixes (1.2.3-rc.1 compared as 1.2.3).
+ * Invalid input returns 0 (treat as equal = no-op).
+ */
+function compareVersions(a: string, b: string): number {
+  const parse = (v: string): number[] => v.split("-")[0]!.split(".").map((n) => parseInt(n, 10) || 0);
+  const pa = parse(a);
+  const pb = parse(b);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+  }
+  return 0;
+}
+
+/**
+ * Check whether a newer @storybloq/storybloq is available.
+ * Uses a 24-hour cache. Returns null on network failure or when running a
+ * dev version ("0.0.0-dev") where comparison is meaningless.
+ */
+export async function checkForUpdate(currentVersion: string): Promise<UpdateInfo | null> {
+  if (!currentVersion || currentVersion === "0.0.0-dev") return null;
+
+  const cached = readCache();
+  let latestVersion = cached?.latestVersion ?? null;
+
+  if (!latestVersion) {
+    latestVersion = await fetchLatestFromNpm();
+    if (latestVersion) writeCache(latestVersion);
+  }
+
+  if (!latestVersion) return null;
+
+  return {
+    currentVersion,
+    latestVersion,
+    updateAvailable: compareVersions(currentVersion, latestVersion) < 0,
+  };
+}
+
+/**
+ * Synchronous cache-only variant. Never hits the network. Used by the
+ * storybloq_status MCP tool, which must not block on I/O. If the cache is
+ * cold or stale, returns null; a parallel async refresh can be triggered
+ * by the caller via refreshUpdateCacheInBackground().
+ */
+export function readUpdateCacheSync(currentVersion: string): UpdateInfo | null {
+  if (!currentVersion || currentVersion === "0.0.0-dev") return null;
+  const cached = readCache();
+  if (!cached) return null;
+  return {
+    currentVersion,
+    latestVersion: cached.latestVersion,
+    updateAvailable: compareVersions(currentVersion, cached.latestVersion) < 0,
+  };
+}
+
+/**
+ * Fire-and-forget background refresh of the update cache. Safe to call from
+ * any context; errors are swallowed. Useful from storybloq_status so the
+ * next call has fresh data.
+ */
+export function refreshUpdateCacheInBackground(): void {
+  void fetchLatestFromNpm().then((v) => {
+    if (v) writeCache(v);
+  });
+}
+
+/**
+ * Format a one-line stderr banner when an update is available. Returns an
+ * empty string if no update is available.
+ */
+export function formatUpdateBanner(info: UpdateInfo | null): string {
+  if (!info || !info.updateAvailable) return "";
+  return (
+    `\nstorybloq v${info.latestVersion} is available (you have v${info.currentVersion}).\n` +
+    `Update: npm install -g @storybloq/storybloq@latest\n`
+  );
+}
