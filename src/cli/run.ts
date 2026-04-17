@@ -59,7 +59,7 @@ export async function runReadCommand(
     const root = discoverProjectRoot();
     if (!root) {
       writeOutput(
-        formatError("not_found", "No .story/ project found. Run `claudestory init` first.", format),
+        formatError("not_found", "No .story/ project found. Run `storybloq init` first.", format),
       );
       process.exitCode = ExitCode.USER_ERROR;
       return;
@@ -109,7 +109,7 @@ export async function runDeleteCommand(
     const root = discoverProjectRoot();
     if (!root) {
       writeOutput(
-        formatError("not_found", "No .story/ project found. Run `claudestory init` first.", format),
+        formatError("not_found", "No .story/ project found. Run `storybloq init` first.", format),
       );
       process.exitCode = ExitCode.USER_ERROR;
       return;

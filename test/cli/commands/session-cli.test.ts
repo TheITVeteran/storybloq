@@ -1,5 +1,5 @@
 /**
- * T-251: `claudestory session` CLI — list, show, repair, delete.
+ * T-251: `storybloq session` CLI — list, show, repair, delete.
  *
  * Exercises the four new CLI handlers against real on-disk .story/ trees.
  * Real git only in tests that need finished-orphan classification.

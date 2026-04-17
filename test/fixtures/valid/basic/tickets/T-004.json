@@ -1,7 +1,7 @@
 {
   "id": "T-004",
   "title": "Add status command",
-  "description": "Implement the claudestory status command.",
+  "description": "Implement the storybloq status command.",
   "type": "task",
   "status": "open",
   "phase": "p5b",

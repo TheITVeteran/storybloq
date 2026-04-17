@@ -18,15 +18,15 @@ When invoked via `/story design`:
 
 2. **Accept platform override**: `/story design web`, `/story design ios`, `/story design macos`, `/story design android`.
 
-3. **Load platform reference**: Read `references/<platform>.md` in the same directory as this file. If not found, tell the user to run `claudestory setup-skill` to update skill files.
+3. **Load platform reference**: Read `references/<platform>.md` in the same directory as this file. If not found, tell the user to run `storybloq setup-skill` to update skill files.
 
-4. **Check existing design issues**: Before creating new issues, list existing open issues with component "design" (via `claudestory_issue_list` MCP tool or `claudestory issue list --component design` CLI). Match findings against existing issues by title and location. Update existing issues instead of creating duplicates. Mark resolved issues when the underlying code no longer violates the rule.
+4. **Check existing design issues**: Before creating new issues, list existing open issues with component "design" (via `storybloq_issue_list` MCP tool or `storybloq issue list --component design` CLI). Match findings against existing issues by title and location. Update existing issues instead of creating duplicates. Mark resolved issues when the underlying code no longer violates the rule.
 
 5. **Scan UI code**: Read component files, layout files, style files, routing. Evaluate against the principles in this file AND the loaded platform reference. Check: hierarchy, state completeness, accessibility, design system consistency, typography, color system, layout, motion, anti-patterns.
 
 6. **Output findings** (three-tier fallback):
-   - If claudestory MCP tools available: create/update issues via `claudestory_issue_create` and `claudestory_issue_update` (severity based on priority order, components: `["design", "<platform>"]`, location: file paths with line numbers)
-   - If MCP unavailable but claudestory CLI installed: use `claudestory issue create` and `claudestory issue update` via Bash
+   - If storybloq MCP tools available: create/update issues via `storybloq_issue_create` and `storybloq_issue_update` (severity based on priority order, components: `["design", "<platform>"]`, location: file paths with line numbers)
+   - If MCP unavailable but storybloq CLI installed: use `storybloq issue create` and `storybloq issue update` via Bash
    - If neither available: output markdown checklist grouped by severity
 
 7. **Present summary**: Show a table of findings grouped by severity (critical, high, medium, low), then use AskUserQuestion:

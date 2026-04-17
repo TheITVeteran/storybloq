@@ -1,7 +1,7 @@
 /**
  * T-251: resolveSessionSelector — tri-state session ID resolver.
  *
- * Exercises the new resolver helper in claudestory/src/autonomous/session-selector.ts
+ * Exercises the new resolver helper in storybloq/src/autonomous/session-selector.ts
  * against real on-disk fixtures. No mocking — we want realpath + readdirSync
  * semantics tested end-to-end, including the symlink-escape guard.
  *

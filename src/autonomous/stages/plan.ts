@@ -35,7 +35,7 @@ export class PlanStage implements WorkflowStage {
         "",
         `Write an implementation plan for this ticket. Save it to \`.story/sessions/${ctx.state.sessionId}/plan.md\`.`,
         "",
-        "When done, call `claudestory_autonomous_guide` with:",
+        "When done, call `storybloq_autonomous_guide` with:",
         '```json',
         `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "plan_written" } }`,
         '```',
@@ -117,7 +117,7 @@ export class PlanStage implements WorkflowStage {
             ? `Call \`review_plan\` MCP tool with the plan content.`
             : `Launch a code review agent to review the plan.`,
           "",
-          "When done, call `claudestory_autonomous_guide` with:",
+          "When done, call `storybloq_autonomous_guide` with:",
           '```json',
           `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "plan_review_round", "verdict": "<approve|revise|request_changes|reject>", "findings": [...] } }`,
           '```',

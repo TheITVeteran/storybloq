@@ -42,7 +42,7 @@ describe("recap command", () => {
       format: "md",
     });
     expect(result.output).toContain("No snapshot found");
-    expect(result.output).toContain("claudestory snapshot");
+    expect(result.output).toContain("storybloq snapshot");
   });
 
   it("shows diff when snapshot exists", async () => {

@@ -17,7 +17,7 @@ afterEach(async () => {
 
 describe("initProject", () => {
   it("creates .story/ with all subdirectories and files", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     const result = await initProject(testRoot, { name: "test-project" });
 
     expect(existsSync(join(testRoot, ".story", "config.json"))).toBe(true);
@@ -34,7 +34,7 @@ describe("initProject", () => {
   });
 
   it("config has correct values", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await initProject(testRoot, { name: "my-project", type: "npm", language: "typescript" });
 
     const { state } = await loadProject(testRoot);
@@ -47,7 +47,7 @@ describe("initProject", () => {
   });
 
   it("roadmap has default phase with project name as title", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await initProject(testRoot, { name: "test-project" });
 
     const { state } = await loadProject(testRoot);
@@ -57,7 +57,7 @@ describe("initProject", () => {
   });
 
   it("roadmap date is today", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await initProject(testRoot, { name: "test" });
 
     const { state } = await loadProject(testRoot);
@@ -66,7 +66,7 @@ describe("initProject", () => {
   });
 
   it("throws conflict if .story/ exists", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await mkdir(join(testRoot, ".story"), { recursive: true });
 
     await expect(
@@ -81,7 +81,7 @@ describe("initProject", () => {
   });
 
   it("succeeds with force when .story/ exists", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await initProject(testRoot, { name: "original" });
     await initProject(testRoot, { name: "overwritten", force: true });
 
@@ -90,7 +90,7 @@ describe("initProject", () => {
   });
 
   it("force preserves existing ticket files", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await initProject(testRoot, { name: "test" });
 
     // Write a ticket manually
@@ -113,7 +113,7 @@ describe("initProject", () => {
   });
 
   it("result passes loadProject round-trip", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await initProject(testRoot, { name: "roundtrip" });
 
     const { state, warnings } = await loadProject(testRoot);
@@ -122,7 +122,7 @@ describe("initProject", () => {
   });
 
   it("uses default type and language when not specified", async () => {
-    testRoot = await mkdtemp(join(tmpdir(), "claudestory-init-"));
+    testRoot = await mkdtemp(join(tmpdir(), "storybloq-init-"));
     await initProject(testRoot, { name: "test" });
 
     const { state } = await loadProject(testRoot);

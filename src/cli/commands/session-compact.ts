@@ -47,7 +47,7 @@ export async function handleSessionCompactPrepare(): Promise<void> {
       try {
         prepareForCompact(active.dir, refreshLease(active.state));
       } catch (err) {
-        process.stderr.write(`[claudestory] compact-prepare: ${err instanceof Error ? err.message : String(err)}\n`);
+        process.stderr.write(`[storybloq] compact-prepare: ${err instanceof Error ? err.message : String(err)}\n`);
         return;
       }
 
@@ -70,7 +70,7 @@ export async function handleSessionCompactPrepare(): Promise<void> {
     });
   } catch (err) {
     // Lock acquisition or other failure — emit stderr, exit 0
-    process.stderr.write(`[claudestory] compact-prepare failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`[storybloq] compact-prepare failed: ${err instanceof Error ? err.message : String(err)}\n`);
   }
 }
 
@@ -106,8 +106,8 @@ export async function handleSessionResumePrompt(): Promise<void> {
     // Stale session — output recovery message (not silence)
     process.stdout.write(
       `Stale compacted session ${sessionId} found (never resumed).\n` +
-      `Run "claudestory session clear-compact ${sessionId}" to recover, ` +
-      `or call claudestory_autonomous_guide with:\n` +
+      `Run "storybloq session clear-compact ${sessionId}" to recover, ` +
+      `or call storybloq_autonomous_guide with:\n` +
       `{"sessionId": "${sessionId}", "action": "resume"}\n`,
     );
     return;
@@ -117,8 +117,8 @@ export async function handleSessionResumePrompt(): Promise<void> {
     // Blocked resume — output recovery instructions
     process.stdout.write(
       `Autonomous session ${sessionId} has a blocked resume (git validation failed).\n` +
-      `Run "claudestory session clear-compact ${sessionId}" to recover, ` +
-      `or check git status and call claudestory_autonomous_guide with:\n` +
+      `Run "storybloq session clear-compact ${sessionId}" to recover, ` +
+      `or check git status and call storybloq_autonomous_guide with:\n` +
       `{"sessionId": "${sessionId}", "action": "resume"}\n`,
     );
     return;
@@ -126,7 +126,7 @@ export async function handleSessionResumePrompt(): Promise<void> {
 
   // Fresh session — output normal resume instruction
   process.stdout.write(
-    `Continue the autonomous coding session. Call \`claudestory_autonomous_guide\` with:\n` +
+    `Continue the autonomous coding session. Call \`storybloq_autonomous_guide\` with:\n` +
     `{"sessionId": "${sessionId}", "action": "resume"}\n`,
   );
 }
@@ -173,7 +173,7 @@ export async function handleSessionClearCompact(root: string, sessionId?: string
         compactPreparedAt: new Date().toISOString(),
       });
       return `Compact markers cleared for session ${info.state.sessionId}. Resume with:\n` +
-        `claudestory_autonomous_guide {"sessionId": "${info.state.sessionId}", "action": "resume"}`;
+        `storybloq_autonomous_guide {"sessionId": "${info.state.sessionId}", "action": "resume"}`;
     }
 
     // Invalid: end session

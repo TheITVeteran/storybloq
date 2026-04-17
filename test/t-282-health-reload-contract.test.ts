@@ -10,7 +10,7 @@ import { resolve } from "node:path";
  * they fail before implementation and pass after.
  *
  * This sidesteps the fact that the Swift test target isn't driven by `npm test`;
- * the Swift-side assertions in claudestoryTests/*HealthReload*.swift still own
+ * the Swift-side assertions in storybloqTests/*HealthReload*.swift still own
  * the runtime contract. This file just gives the autonomous guide a npm-visible
  * red-phase signal.
  */

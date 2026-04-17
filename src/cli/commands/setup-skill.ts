@@ -84,14 +84,14 @@ export async function copyDirRecursive(srcDir: string, destDir: string): Promise
 const PRECOMPACT_SUBCOMMAND = "session compact-prepare";
 const SESSIONSTART_SUBCOMMAND = "session resume-prompt";
 const STOP_SUBCOMMAND = "hook-status";
-const LEGACY_PRECOMPACT_HOOK_COMMAND = "claudestory snapshot --quiet";
+const LEGACY_PRECOMPACT_HOOK_COMMAND = "storybloq snapshot --quiet";
 
 // ---------------------------------------------------------------------------
-// Claudestory binary resolution (ISS-560)
+// Storybloq binary resolution (ISS-560)
 // ---------------------------------------------------------------------------
 
 /**
- * Resolves `claudestory` to an absolute filesystem path.
+ * Resolves `storybloq` to an absolute filesystem path.
  *
  * Walks `process.env.PATH` first (respecting PATHEXT on Windows), then falls
  * back to a platform-scoped candidate list covering nvm/fnm/volta/asdf and
@@ -101,7 +101,7 @@ const LEGACY_PRECOMPACT_HOOK_COMMAND = "claudestory snapshot --quiet";
  * string so that mid-session `nvm use` / `fnm use` / `asdf shell` switches
  * do not strip the command from the active PATH.
  */
-export function resolveClaudestoryBin(): string | null {
+export function resolveStorybloqBin(): string | null {
   const isWindows = process.platform === "win32";
   const exts = isWindows
     ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)
@@ -111,7 +111,7 @@ export function resolveClaudestoryBin(): string | null {
   for (const dir of pathEnv.split(pathDelimiter)) {
     if (!dir) continue;
     for (const ext of exts) {
-      const candidate = join(dir, "claudestory" + ext);
+      const candidate = join(dir, "storybloq" + ext);
       if (isExecutableFile(candidate)) return candidate;
     }
   }
@@ -139,13 +139,13 @@ function candidatePaths(): string[] {
     const appData = process.env.APPDATA ?? join(home, "AppData", "Roaming");
     const localAppData = process.env.LOCALAPPDATA ?? join(home, "AppData", "Local");
     for (const ext of [".cmd", ".exe", ".bat", ""]) {
-      list.push(join(appData, "npm", "claudestory" + ext));
+      list.push(join(appData, "npm", "storybloq" + ext));
     }
     const fnmMultishells = join(localAppData, "fnm_multishells");
     try {
       for (const shell of readdirSync(fnmMultishells).sort().reverse()) {
         for (const ext of [".cmd", ".exe", ".bat", ""]) {
-          list.push(join(fnmMultishells, shell, "claudestory" + ext));
+          list.push(join(fnmMultishells, shell, "storybloq" + ext));
         }
       }
     } catch { /* dir missing */ }
@@ -153,16 +153,16 @@ function candidatePaths(): string[] {
   }
 
   list.push(
-    join(home, ".local", "bin", "claudestory"),
-    "/usr/local/bin/claudestory",
-    "/opt/homebrew/bin/claudestory",
-    join(home, ".npm-global", "bin", "claudestory"),
+    join(home, ".local", "bin", "storybloq"),
+    "/usr/local/bin/storybloq",
+    "/opt/homebrew/bin/storybloq",
+    join(home, ".npm-global", "bin", "storybloq"),
   );
 
   const nvmVersions = join(home, ".nvm", "versions", "node");
   try {
     for (const v of readdirSync(nvmVersions).sort().reverse()) {
-      list.push(join(nvmVersions, v, "bin", "claudestory"));
+      list.push(join(nvmVersions, v, "bin", "storybloq"));
     }
   } catch { /* dir missing */ }
 
@@ -175,14 +175,14 @@ function candidatePaths(): string[] {
   for (const fnmDir of fnmDirs) {
     try {
       for (const v of readdirSync(fnmDir).sort().reverse()) {
-        list.push(join(fnmDir, v, "installation", "bin", "claudestory"));
+        list.push(join(fnmDir, v, "installation", "bin", "storybloq"));
       }
     } catch { /* dir missing */ }
   }
 
   list.push(
-    join(home, ".volta", "bin", "claudestory"),
-    join(home, ".asdf", "shims", "claudestory"),
+    join(home, ".volta", "bin", "storybloq"),
+    join(home, ".asdf", "shims", "storybloq"),
   );
   return list;
 }
@@ -219,7 +219,7 @@ export function formatHookCommand(binPath: string, subcommand: string): string {
  * Returns the basename (without `.exe`/`.cmd`/`.bat` on Windows) and the
  * remaining argument text after the token, or `null` if parsing fails.
  * Used by `migrateLegacyHookVariants` to decide whether a registered hook
- * actually invokes `claudestory`.
+ * actually invokes `storybloq`.
  */
 function parseHookCommand(command: string): { binBasename: string; rest: string } | null {
   const trimmed = command.trim();
@@ -391,7 +391,7 @@ export async function registerPreCompactHook(
   settingsPath?: string,
   binPath?: string,
 ): Promise<"registered" | "exists" | "skipped"> {
-  const bin = binPath ?? resolveClaudestoryBin() ?? "claudestory";
+  const bin = binPath ?? resolveStorybloqBin() ?? "storybloq";
   const command = formatHookCommand(bin, PRECOMPACT_SUBCOMMAND);
   return registerHook("PreCompact", { type: "command", command }, settingsPath);
 }
@@ -404,7 +404,7 @@ export async function registerSessionStartHook(
   settingsPath?: string,
   binPath?: string,
 ): Promise<"registered" | "exists" | "skipped"> {
-  const bin = binPath ?? resolveClaudestoryBin() ?? "claudestory";
+  const bin = binPath ?? resolveStorybloqBin() ?? "storybloq";
   const command = formatHookCommand(bin, SESSIONSTART_SUBCOMMAND);
   return registerHook("SessionStart", { type: "command", command }, settingsPath, "compact");
 }
@@ -416,18 +416,18 @@ export async function registerStopHook(
   settingsPath?: string,
   binPath?: string,
 ): Promise<"registered" | "exists" | "skipped"> {
-  const bin = binPath ?? resolveClaudestoryBin() ?? "claudestory";
+  const bin = binPath ?? resolveStorybloqBin() ?? "storybloq";
   const command = formatHookCommand(bin, STOP_SUBCOMMAND);
   return registerHook("Stop", { type: "command", command, async: true }, settingsPath);
 }
 
 /**
- * Removes hook entries whose executable basename is `claudestory` and whose
+ * Removes hook entries whose executable basename is `storybloq` and whose
  * argument tail matches `subcommand` exactly — but are not equal to the
  * freshly-generated `newCommand`. Preserves idempotency (exact matches stay)
  * and leaves unrelated user hooks alone (other tools, extra flags, wrappers).
  *
- * ISS-560: lets setup-skill replace stale bare `claudestory` and stale
+ * ISS-560: lets setup-skill replace stale bare `storybloq` and stale
  * absolute-path entries from prior Node versions without touching anything
  * the user added manually.
  */
@@ -475,7 +475,7 @@ export async function migrateLegacyHookVariants(
       if (cmd === newCommand.trim()) return true;
       const parsed = parseHookCommand(cmd);
       if (parsed === null) return true;
-      if (parsed.binBasename !== "claudestory") return true;
+      if (parsed.binBasename !== "storybloq") return true;
       if (parsed.rest !== subcommand) return true;
       return false;
     });
@@ -587,7 +587,7 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: ${message}\n`);
-    process.stderr.write("This may indicate a corrupt installation. Try: npm install -g @anthropologies/claudestory\n");
+    process.stderr.write("This may indicate a corrupt installation. Try: npm install -g @storybloq/storybloq\n");
     process.exitCode = 1;
     return;
   }
@@ -638,22 +638,22 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
   log(`  ${writtenFiles.join(" + ")} written`);
   if (missingFiles.length > 0) {
     process.stderr.write(`Warning: support file(s) not found in source: ${missingFiles.join(", ")}\n`);
-    process.stderr.write("  This may indicate a corrupt installation. Try: npm install -g @anthropologies/claudestory\n");
+    process.stderr.write("  This may indicate a corrupt installation. Try: npm install -g @storybloq/storybloq\n");
   }
 
-  // Attempt MCP registration — requires both `claudestory` and `claude` in PATH.
+  // Attempt MCP registration — requires both `storybloq` and `claude` in PATH.
   let mcpRegistered = false;
   let cliInPath = false;
   try {
-    execFileSync("claudestory", ["--version"], { stdio: "pipe", timeout: 5000 });
+    execFileSync("storybloq", ["--version"], { stdio: "pipe", timeout: 5000 });
     cliInPath = true;
   } catch {
-    // claudestory not in PATH
+    // storybloq not in PATH
   }
 
   if (cliInPath) {
     try {
-      execFileSync("claude", ["mcp", "add", "claudestory", "-s", "user", "--", "claudestory", "--mcp"], {
+      execFileSync("claude", ["mcp", "add", "storybloq", "-s", "user", "--", "storybloq", "--mcp"], {
         stdio: "pipe",
         timeout: 10000,
       });
@@ -669,27 +669,27 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
       } else if (isNotFound) {
         log("");
         log("MCP registration skipped — `claude` CLI not found in PATH.");
-        log("  To register manually: claude mcp add claudestory -s user -- claudestory --mcp");
+        log("  To register manually: claude mcp add storybloq -s user -- storybloq --mcp");
       } else {
         log("");
         log(`MCP registration failed: ${message.split("\n")[0]}`);
-        log("  To register manually: claude mcp add claudestory -s user -- claudestory --mcp");
+        log("  To register manually: claude mcp add storybloq -s user -- storybloq --mcp");
       }
     }
   } else {
     log("");
-    log("MCP registration skipped — `claudestory` not found in PATH.");
+    log("MCP registration skipped — `storybloq` not found in PATH.");
     log("Install globally first, then register MCP:");
-    log("  npm install -g @anthropologies/claudestory");
-    log("  claude mcp add claudestory -s user -- claudestory --mcp");
+    log("  npm install -g @storybloq/storybloq");
+    log("  claude mcp add storybloq -s user -- storybloq --mcp");
   }
 
   // Hook registration (ISS-032: hook-driven compaction; ISS-560: absolute bin path)
-  // Gate on `resolveClaudestoryBin()` — Claude Code hooks run under a shell
+  // Gate on `resolveStorybloqBin()` — Claude Code hooks run under a shell
   // whose PATH may differ from this process's at install time (nvm/fnm
   // switches mid-session). Baking the absolute path into the command string
   // removes that dependency.
-  const resolvedBin = resolveClaudestoryBin();
+  const resolvedBin = resolveStorybloqBin();
 
   if (!skipHooks && resolvedBin !== null) {
     // Migrate: remove legacy snapshot hook if present
@@ -749,10 +749,10 @@ export async function handleSetupSkill(options: SetupSkillOptions = {}): Promise
     log("  Hook registration skipped (--skip-hooks)");
   } else {
     log("");
-    log("Hook registration skipped — `claudestory` binary not found.");
+    log("Hook registration skipped — `storybloq` binary not found.");
     log("Install globally first, then re-run setup-skill:");
-    log("  npm install -g @anthropologies/claudestory");
-    log("  claudestory setup-skill");
+    log("  npm install -g @storybloq/storybloq");
+    log("  storybloq setup-skill");
   }
 
   log("");

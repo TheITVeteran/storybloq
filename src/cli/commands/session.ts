@@ -1,5 +1,5 @@
 /**
- * T-251: `claudestory session` CLI — list, show, repair, delete.
+ * T-251: `storybloq session` CLI — list, show, repair, delete.
  *
  * Four admin subcommands for inspecting and repairing session state. Every
  * user-supplied selector flows through resolveSessionSelector for path

@@ -57,15 +57,15 @@ export async function startInboxWatcher(root: string, server: McpServer): Promis
     });
 
     watcher.on("error", (err) => {
-      process.stderr.write(`claudestory: channel inbox watcher error: ${err.message}\n`);
+      process.stderr.write(`storybloq: channel inbox watcher error: ${err.message}\n`);
       // Watcher died; fall back to periodic polling
       startPollingFallback(inboxPath, server);
     });
 
-    process.stderr.write(`claudestory: channel inbox watcher started at ${inboxPath}\n`);
+    process.stderr.write(`storybloq: channel inbox watcher started at ${inboxPath}\n`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`claudestory: failed to start inbox watcher, using polling fallback: ${msg}\n`);
+    process.stderr.write(`storybloq: failed to start inbox watcher, using polling fallback: ${msg}\n`);
     startPollingFallback(inboxPath, server);
   }
 }
@@ -97,7 +97,7 @@ function scheduleDebouncedProcess(inboxPath: string, server: McpServer): void {
     debounceTimer = null;
     processInbox(inboxPath, server).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`claudestory: inbox processing error: ${msg}\n`);
+      process.stderr.write(`storybloq: inbox processing error: ${msg}\n`);
     });
   }, DEBOUNCE_MS);
 }
@@ -111,7 +111,7 @@ function startPollingFallback(inboxPath: string, server: McpServer): void {
   pollInterval = setInterval(() => {
     processInbox(inboxPath, server).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`claudestory: poll processing error: ${msg}\n`);
+      process.stderr.write(`storybloq: poll processing error: ${msg}\n`);
     });
   }, 2000);
 }
@@ -130,7 +130,7 @@ async function recoverStaleProcessingFiles(inboxPath: string): Promise<void> {
       const originalName = f.slice(0, -".processing".length);
       try {
         await rename(join(inboxPath, f), join(inboxPath, originalName));
-        process.stderr.write(`claudestory: recovered stale processing file: ${f}\n`);
+        process.stderr.write(`storybloq: recovered stale processing file: ${f}\n`);
       } catch {
         // Best effort -- file may have been cleaned up
       }
@@ -162,7 +162,7 @@ async function processInbox(inboxPath: string, server: McpServer): Promise<void>
     const batch = eventFiles.slice(0, MAX_INBOX_DEPTH);
     if (eventFiles.length > MAX_INBOX_DEPTH) {
       process.stderr.write(
-        `claudestory: channel inbox has ${eventFiles.length} files, processing batch of ${MAX_INBOX_DEPTH}\n`,
+        `storybloq: channel inbox has ${eventFiles.length} files, processing batch of ${MAX_INBOX_DEPTH}\n`,
       );
     }
 
@@ -181,7 +181,7 @@ async function processInbox(inboxPath: string, server: McpServer): Promise<void>
 async function processEventFile(inboxPath: string, filename: string, server: McpServer): Promise<void> {
   // Step 1: Validate filename (path traversal protection)
   if (!isValidInboxFilename(filename)) {
-    process.stderr.write(`claudestory: rejecting invalid inbox filename: ${filename}\n`);
+    process.stderr.write(`storybloq: rejecting invalid inbox filename: ${filename}\n`);
     await moveToFailed(inboxPath, filename);
     return;
   }
@@ -215,14 +215,14 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
   try {
     parsed = JSON.parse(raw);
   } catch {
-    process.stderr.write(`claudestory: invalid JSON in channel event ${filename}\n`);
+    process.stderr.write(`storybloq: invalid JSON in channel event ${filename}\n`);
     await moveToFailed(inboxPath, processingFilename, filename);
     return;
   }
 
   const result = ChannelEventSchema.safeParse(parsed);
   if (!result.success) {
-    process.stderr.write(`claudestory: invalid channel event schema in ${filename}: ${result.error.message}\n`);
+    process.stderr.write(`storybloq: invalid channel event schema in ${filename}: ${result.error.message}\n`);
     await moveToFailed(inboxPath, processingFilename, filename);
     return;
   }
@@ -248,7 +248,7 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
         params: { content, meta },
       });
     }
-    process.stderr.write(`claudestory: sent channel event ${event.event}\n`);
+    process.stderr.write(`storybloq: sent channel event ${event.event}\n`);
     // Clear retry tracking on success
     permissionRetryCount.delete(filename);
     eventRetryCount.delete(filename);
@@ -259,7 +259,7 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
       const retries = (permissionRetryCount.get(filename) ?? 0) + 1;
       permissionRetryCount.set(filename, retries);
       if (retries >= MAX_PERMISSION_RETRIES) {
-        process.stderr.write(`claudestory: permission notification failed after ${retries} retries, quarantining: ${msg}\n`);
+        process.stderr.write(`storybloq: permission notification failed after ${retries} retries, quarantining: ${msg}\n`);
         permissionRetryCount.delete(filename);
         await moveToFailed(inboxPath, processingFilename, filename);
         return;
@@ -270,19 +270,19 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
       } catch (renameErr: unknown) {
         // Rename-back failed -- quarantine to prevent permanent orphan as .processing
         const renameMsg = renameErr instanceof Error ? renameErr.message : String(renameErr);
-        process.stderr.write(`claudestory: rename-back failed for ${filename}, quarantining: ${renameMsg}\n`);
+        process.stderr.write(`storybloq: rename-back failed for ${filename}, quarantining: ${renameMsg}\n`);
         permissionRetryCount.delete(filename);
         await moveToFailed(inboxPath, processingFilename, filename);
         return;
       }
-      process.stderr.write(`claudestory: permission notification failed (attempt ${retries}/${MAX_PERMISSION_RETRIES}), keeping for retry: ${msg}\n`);
+      process.stderr.write(`storybloq: permission notification failed (attempt ${retries}/${MAX_PERMISSION_RETRIES}), keeping for retry: ${msg}\n`);
       return;
     }
     // Non-permission events (ticket_requested, pause/resume/cancel_session, priority_changed)
     // have no PTY fallback via channel path -- retry with time-based expiry.
     const eventAge = Date.now() - new Date(event.timestamp).getTime();
     if (eventAge > EVENT_EXPIRY_MS) {
-      process.stderr.write(`claudestory: channel event ${event.event} expired after ${Math.round(eventAge / 1000)}s, quarantining: ${msg}\n`);
+      process.stderr.write(`storybloq: channel event ${event.event} expired after ${Math.round(eventAge / 1000)}s, quarantining: ${msg}\n`);
       eventRetryCount.delete(filename);
       await moveToFailed(inboxPath, processingFilename, filename);
       return;
@@ -290,7 +290,7 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
     const retries = (eventRetryCount.get(filename) ?? 0) + 1;
     eventRetryCount.set(filename, retries);
     if (retries >= MAX_EVENT_RETRIES) {
-      process.stderr.write(`claudestory: channel event ${event.event} failed after ${retries} retries, quarantining: ${msg}\n`);
+      process.stderr.write(`storybloq: channel event ${event.event} failed after ${retries} retries, quarantining: ${msg}\n`);
       eventRetryCount.delete(filename);
       await moveToFailed(inboxPath, processingFilename, filename);
       return;
@@ -299,12 +299,12 @@ async function processEventFile(inboxPath: string, filename: string, server: Mcp
       await rename(processingPath, filePath);
     } catch (renameErr: unknown) {
       const renameMsg = renameErr instanceof Error ? renameErr.message : String(renameErr);
-      process.stderr.write(`claudestory: rename-back failed for ${filename}, quarantining: ${renameMsg}\n`);
+      process.stderr.write(`storybloq: rename-back failed for ${filename}, quarantining: ${renameMsg}\n`);
       eventRetryCount.delete(filename);
       await moveToFailed(inboxPath, processingFilename, filename);
       return;
     }
-    process.stderr.write(`claudestory: channel event ${event.event} failed (attempt ${retries}/${MAX_EVENT_RETRIES}), keeping for retry: ${msg}\n`);
+    process.stderr.write(`storybloq: channel event ${event.event} failed (attempt ${retries}/${MAX_EVENT_RETRIES}), keeping for retry: ${msg}\n`);
     return;
   }
 
@@ -332,7 +332,7 @@ async function moveToFailed(inboxPath: string, sourceFilename: string, destFilen
       // Give up
     }
     const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`claudestory: failed to move ${sourceFilename} to .failed/: ${msg}\n`);
+    process.stderr.write(`storybloq: failed to move ${sourceFilename} to .failed/: ${msg}\n`);
   }
 }
 

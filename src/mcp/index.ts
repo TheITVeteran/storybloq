@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * claudestory MCP server entry point.
+ * storybloq MCP server entry point.
  *
  * Provides 30 tools for querying and modifying .story/ project state.
  * Uses direct handler imports — no subprocess spawning.
@@ -10,7 +10,7 @@
  * Project root discovery:
  * - CLAUDESTORY_PROJECT_ROOT env var (explicit, highest priority)
  * - Walk-up from cwd to find .story/config.json
- * - If neither found, server starts in degraded mode with claudestory_init + error status
+ * - If neither found, server starts in degraded mode with storybloq_init + error status
  */
 import { realpathSync, existsSync } from "node:fs";
 import { resolve, join, isAbsolute } from "node:path";
@@ -62,18 +62,18 @@ function tryDiscoverRoot(): string | null {
 
 /**
  * Degraded-mode tools: registered when no .story/ project is found.
- * Provides claudestory_init to bootstrap a project, then dynamically
+ * Provides storybloq_init to bootstrap a project, then dynamically
  * swaps to the full tool set via registerAllTools.
  */
 function registerDegradedTools(server: McpServer): void {
-  const degradedStatus = server.registerTool("claudestory_status", {
+  const degradedStatus = server.registerTool("storybloq_status", {
     description: "Project summary — returns guidance if no .story/ project found",
   }, () => Promise.resolve({
-    content: [{ type: "text" as const, text: "No .story/ project found. Use claudestory_init to create one, or navigate to a directory with .story/." }],
+    content: [{ type: "text" as const, text: "No .story/ project found. Use storybloq_init to create one, or navigate to a directory with .story/." }],
     isError: true,
   }));
 
-  const degradedInit = server.registerTool("claudestory_init", {
+  const degradedInit = server.registerTool("storybloq_init", {
     description: "Initialize a new .story/ project in the current directory",
     inputSchema: {
       name: z.string().describe("Project name"),
@@ -102,7 +102,7 @@ function registerDegradedTools(server: McpServer): void {
       degradedInit.remove();
       registerAllTools(server, result.root);
     } catch (swapErr: unknown) {
-      process.stderr.write(`claudestory: tool-swap failed after init: ${swapErr instanceof Error ? swapErr.message : String(swapErr)}\n`);
+      process.stderr.write(`storybloq: tool-swap failed after init: ${swapErr instanceof Error ? swapErr.message : String(swapErr)}\n`);
       // Re-register degraded tools so the server isn't completely toolless.
       // The project was created — user can restart for full access.
       try { registerDegradedTools(server); } catch { /* best effort */ }
@@ -113,10 +113,10 @@ function registerDegradedTools(server: McpServer): void {
     try {
       await startInboxWatcher(result.root, server);
     } catch (watchErr: unknown) {
-      process.stderr.write(`claudestory: inbox watcher failed after init: ${watchErr instanceof Error ? watchErr.message : String(watchErr)}\n`);
+      process.stderr.write(`storybloq: inbox watcher failed after init: ${watchErr instanceof Error ? watchErr.message : String(watchErr)}\n`);
     }
 
-    process.stderr.write(`claudestory: initialized at ${result.root}\n`);
+    process.stderr.write(`storybloq: initialized at ${result.root}\n`);
 
     const lines = [
       `Initialized .story/ project "${args.name}" at ${result.root}`,
@@ -125,7 +125,7 @@ function registerDegradedTools(server: McpServer): void {
     if (result.warnings.length > 0) {
       lines.push(`Warnings: ${result.warnings.join("; ")}`);
     }
-    lines.push("", "All claudestory tools are now available. Use claudestory_phase_create to add phases and claudestory_ticket_create to add tickets.");
+    lines.push("", "All storybloq tools are now available. Use storybloq_phase_create to add phases and storybloq_ticket_create to add tickets.");
     return { content: [{ type: "text" as const, text: lines.join("\n") }] };
   });
 }
@@ -134,11 +134,11 @@ async function main(): Promise<void> {
   const root = tryDiscoverRoot();
 
   const server = new McpServer(
-    { name: "claudestory", version },
+    { name: "storybloq", version },
     {
       instructions: root
-        ? "Start with claudestory_status for a project overview, then claudestory_ticket_next for the highest-priority work, then claudestory_handover_latest for session context."
-        : "No .story/ project found. Use claudestory_init to initialize a new project, or navigate to a directory with .story/.",
+        ? "Start with storybloq_status for a project overview, then storybloq_ticket_next for the highest-priority work, then storybloq_handover_latest for session context."
+        : "No .story/ project found. Use storybloq_init to initialize a new project, or navigate to a directory with .story/.",
       capabilities: {
         experimental: {
           "claude/channel": {},
@@ -151,10 +151,10 @@ async function main(): Promise<void> {
   if (root) {
     registerAllTools(server, root);
     await startInboxWatcher(root, server);
-    process.stderr.write(`claudestory MCP server running (root: ${root})\n`);
+    process.stderr.write(`storybloq MCP server running (root: ${root})\n`);
   } else {
     registerDegradedTools(server);
-    process.stderr.write("claudestory MCP server running (no project — claudestory_init available)\n");
+    process.stderr.write("storybloq MCP server running (no project — storybloq_init available)\n");
   }
 
   // Graceful shutdown: stop inbox watcher on process exit
@@ -171,23 +171,23 @@ async function main(): Promise<void> {
   process.on("uncaughtException", (err) => {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "EPIPE") {
-      try { process.stderr.write("claudestory: stdout pipe broken (EPIPE), shutting down\n"); } catch { /* stderr may also be closed */ }
+      try { process.stderr.write("storybloq: stdout pipe broken (EPIPE), shutting down\n"); } catch { /* stderr may also be closed */ }
       try { stopInboxWatcher(); } catch { /* best effort */ }
       process.exit(0);
     }
-    try { process.stderr.write(`claudestory: uncaught exception: ${err.message}\n`); } catch { /* stderr may also be closed */ }
+    try { process.stderr.write(`storybloq: uncaught exception: ${err.message}\n`); } catch { /* stderr may also be closed */ }
     try { stopInboxWatcher(); } catch { /* best effort */ }
     process.exit(1);
   });
   process.on("unhandledRejection", (reason) => {
     const code = reason instanceof Error ? (reason as NodeJS.ErrnoException).code : undefined;
     if (code === "EPIPE") {
-      try { process.stderr.write("claudestory: stdout pipe broken (EPIPE), shutting down\n"); } catch { /* stderr may also be closed */ }
+      try { process.stderr.write("storybloq: stdout pipe broken (EPIPE), shutting down\n"); } catch { /* stderr may also be closed */ }
       try { stopInboxWatcher(); } catch { /* best effort */ }
       process.exit(0);
     }
     const msg = reason instanceof Error ? reason.message : String(reason);
-    try { process.stderr.write(`claudestory: unhandled rejection: ${msg}\n`); } catch { /* stderr may also be closed */ }
+    try { process.stderr.write(`storybloq: unhandled rejection: ${msg}\n`); } catch { /* stderr may also be closed */ }
     try { stopInboxWatcher(); } catch { /* best effort */ }
     process.exit(1);
   });
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
   // Without this, the process zombies (kept alive by inbox watcher setInterval / FSWatcher)
   // and the next stdout.write() crashes with EPIPE.
   process.stdin.on("end", () => {
-    try { process.stderr.write("claudestory: stdin closed, shutting down\n"); } catch { /* stderr may also be closed */ }
+    try { process.stderr.write("storybloq: stdin closed, shutting down\n"); } catch { /* stderr may also be closed */ }
     try { stopInboxWatcher(); } catch { /* best effort */ }
     process.exit(0);
   });
@@ -215,8 +215,8 @@ async function main(): Promise<void> {
     try {
       process.stderr.write(
         isEpipe
-          ? "claudestory: stdout pipe broken (EPIPE), shutting down\n"
-          : `claudestory: stdout error: ${err.message}\n`,
+          ? "storybloq: stdout pipe broken (EPIPE), shutting down\n"
+          : `storybloq: stdout error: ${err.message}\n`,
       );
     } catch { /* stderr may also be closed */ }
     try { stopInboxWatcher(); } catch { /* best effort */ }

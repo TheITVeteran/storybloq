@@ -31,21 +31,21 @@ describe("MCP integration — real filesystem", () => {
     return dir;
   }
 
-  it("claudestory_status — full pipeline", async () => {
+  it("storybloq_status — full pipeline", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, handleStatus);
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain("Phase");
   });
 
-  it("claudestory_ticket_get — valid ticket", async () => {
+  it("storybloq_ticket_get — valid ticket", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, (ctx) => handleTicketGet("T-001", ctx));
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toBeDefined();
   });
 
-  it("claudestory_ticket_get — not found (informational, not isError)", async () => {
+  it("storybloq_ticket_get — not found (informational, not isError)", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, (ctx) => handleTicketGet("T-999", ctx));
     // not_found is informational — NOT isError
@@ -53,14 +53,14 @@ describe("MCP integration — real filesystem", () => {
     expect(result.content[0].text).toContain("not found");
   });
 
-  it("claudestory_phase_list — lists phases", async () => {
+  it("storybloq_phase_list — lists phases", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, handlePhaseList);
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text.length).toBeGreaterThan(0);
   });
 
-  it("claudestory_issue_list — lists issues", async () => {
+  it("storybloq_issue_list — lists issues", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, (ctx) =>
       handleIssueList({}, ctx),
@@ -68,19 +68,19 @@ describe("MCP integration — real filesystem", () => {
     expect(result.isError).toBeUndefined();
   });
 
-  it("claudestory_validate — validates project", async () => {
+  it("storybloq_validate — validates project", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, handleValidate);
     expect(result.isError).toBeUndefined();
   });
 
-  it("claudestory_blocker_list — lists blockers", async () => {
+  it("storybloq_blocker_list — lists blockers", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, handleBlockerList);
     expect(result.isError).toBeUndefined();
   });
 
-  it("claudestory_handover_list — lists handovers", async () => {
+  it("storybloq_handover_list — lists handovers", async () => {
     const root = await setupProject();
     const result = await runMcpReadTool(root, handleHandoverList);
     expect(result.isError).toBeUndefined();
@@ -152,7 +152,7 @@ describe("MCP integration — phase_create write pipeline", () => {
     tmpDirs.length = 0;
   });
 
-  it("claudestory_phase_create — creates phase via write pipeline", async () => {
+  it("storybloq_phase_create — creates phase via write pipeline", async () => {
     const dir = await mkdtemp(join(tmpdir(), "mcp-phase-"));
     tmpDirs.push(dir);
     await initProject(dir, { name: "test" });
@@ -170,7 +170,7 @@ describe("MCP integration — phase_create write pipeline", () => {
     expect(roadmap.phases[1].id).toBe("alpha");
   });
 
-  it("claudestory_phase_create — duplicate ID returns error", async () => {
+  it("storybloq_phase_create — duplicate ID returns error", async () => {
     const dir = await mkdtemp(join(tmpdir(), "mcp-phase-"));
     tmpDirs.push(dir);
     await initProject(dir, { name: "test" });
@@ -184,7 +184,7 @@ describe("MCP integration — phase_create write pipeline", () => {
     expect(result.content[0].text).toContain("already exists");
   });
 
-  it("claudestory_phase_create — missing positioning returns error", async () => {
+  it("storybloq_phase_create — missing positioning returns error", async () => {
     const dir = await mkdtemp(join(tmpdir(), "mcp-phase-"));
     tmpDirs.push(dir);
     await initProject(dir, { name: "test" });
@@ -208,7 +208,7 @@ describe("MCP integration — root pinning", () => {
 
   it("rejects non-existent root path", async () => {
     const result = await runMcpReadTool(
-      "/tmp/definitely-does-not-exist-claudestory",
+      "/tmp/definitely-does-not-exist-storybloq",
       handleStatus,
     );
     expect(result.isError).toBe(true);

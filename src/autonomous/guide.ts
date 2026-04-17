@@ -200,7 +200,7 @@ async function dispatchTargetedResume(
         "",
         "Write a session handover summarizing what was accomplished, decisions made, and what's next.",
         "",
-        'Call `claudestory_autonomous_guide` with:',
+        'Call `storybloq_autonomous_guide` with:',
         "```json",
         `{ "sessionId": "${state.sessionId}", "action": "report", "report": { "completedAction": "handover_written", "handoverContent": "..." } }`,
         "```",
@@ -604,13 +604,13 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
           `Stale compacted session ${existing.state.sessionId} found (prepared ${Math.round((Date.now() - preparedAt) / 60000)} minutes ago, never resumed). ` +
           `SessionStart hook is no longer prompting for this session.\n` +
           `- To resume anyway: call action "resume" with sessionId "${existing.state.sessionId}"\n` +
-          `- To abandon and start fresh: run "claudestory session stop ${existing.state.sessionId}"`,
+          `- To abandon and start fresh: run "storybloq session stop ${existing.state.sessionId}"`,
         ));
       }
       return guideError(new Error(
         `Active session ${existing.state.sessionId} is awaiting compaction resume.\n` +
         `- To continue: call action "resume" with sessionId "${existing.state.sessionId}"\n` +
-        `- To abandon: run "claudestory session clear-compact ${existing.state.sessionId}"`,
+        `- To abandon: run "storybloq session clear-compact ${existing.state.sessionId}"`,
       ));
     }
     return guideError(new Error(
@@ -634,7 +634,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
         return guideError(new Error(
           `${resumable.stale ? "Stale c" : "C"}ompacted session ${sid} found (prepared ${Math.round((Date.now() - preparedAt) / 60000)} minutes ago, lease expired but not resumed).\n` +
           `- To resume: call action "resume" with sessionId "${sid}"\n` +
-          `- To abandon: run "claudestory session stop ${sid}"`,
+          `- To abandon: run "storybloq session stop ${sid}"`,
         ));
       }
     }
@@ -835,7 +835,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       } else if (line.length > 3) {
         // Tracked file with modifications (M, A, D, R, C, etc.)
         const filePath = line.slice(3).trim();
-        // Skip .story/ files — managed by claudestory, always safe to have dirty
+        // Skip .story/ files — managed by storybloq, always safe to have dirty
         if (filePath.startsWith(".story/")) continue;
         const hashResult = await gitBlobHash(root, filePath);
         dirtyTracked[filePath] = { blobHash: hashResult.ok ? hashResult.data : "" };
@@ -847,7 +847,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
     if (Object.keys(dirtyTracked).length > 0 && mode !== "review") {
       const dirtyFileHandling = resolvedRecipe.dirtyFileHandling ?? "block";
       if (dirtyFileHandling === "stash") {
-        const stashMessage = `claudestory-auto-${session.sessionId}`;
+        const stashMessage = `storybloq-auto-${session.sessionId}`;
         const stashResult = await gitStash(root, stashMessage);
         if (!stashResult.ok) {
           abortSession();
@@ -1080,7 +1080,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
             abortSession();
             return guideError(new Error(
               `Ticket ${args.ticketId} is claimed by active session ${claimId}. ` +
-              `Wait for it to finish or stop it with "claudestory session stop ${claimId}".`,
+              `Wait for it to finish or stop it with "storybloq session stop ${claimId}".`,
             ));
           }
         }
@@ -1145,7 +1145,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
           "",
           "**IMPORTANT:** Pass the FULL unified diff output to the reviewer. Do NOT summarize.",
           "",
-          "When the code review is done, call `claudestory_autonomous_guide` with the verdict:",
+          "When the code review is done, call `storybloq_autonomous_guide` with the verdict:",
           '```json',
           `{ "sessionId": "${updated.sessionId}", "action": "report", "report": { "completedAction": "code_review_round", "verdict": "<approve|revise|request_changes|reject>", "findings": [...] } }`,
           '```',
@@ -1160,7 +1160,7 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
           `Write the plan as a markdown file at \`.story/sessions/${updated.sessionId}/plan.md\`.`,
           "Do NOT use Claude Code's plan mode.",
           "",
-          "When done, call `claudestory_autonomous_guide`:",
+          "When done, call `storybloq_autonomous_guide`:",
           '```json',
           `{ "sessionId": "${updated.sessionId}", "action": "report", "report": { "completedAction": "plan_written" } }`,
           '```',
@@ -1296,10 +1296,10 @@ async function handleStart(root: string, args: GuideInput): Promise<McpToolResul
       recsText,
       "",
       topCandidate
-        ? `Pick **${topCandidate.ticket.id}** (highest priority) or an open issue by calling \`claudestory_autonomous_guide\` now:`
+        ? `Pick **${topCandidate.ticket.id}** (highest priority) or an open issue by calling \`storybloq_autonomous_guide\` now:`
         : hasHighIssues
-          ? "Pick an issue to fix by calling `claudestory_autonomous_guide` now:"
-          : "Pick a ticket by calling `claudestory_autonomous_guide` now:",
+          ? "Pick an issue to fix by calling `storybloq_autonomous_guide` now:"
+          : "Pick a ticket by calling `storybloq_autonomous_guide` now:",
       '```json',
       topCandidate
         ? `{ "sessionId": "${updated.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "${topCandidate.ticket.id}" } }`
@@ -1529,14 +1529,14 @@ async function handleReport(root: string, args: GuideInput): Promise<McpToolResu
   if (currentState === "COMPACT" && !state.compactPending) {
     return guideError(new Error(
       `Session ${args.sessionId} is in COMPACT state but compactPending is false (stale compact). ` +
-      `Run "claudestory session clear-compact ${args.sessionId}" to recover.`,
+      `Run "storybloq session clear-compact ${args.sessionId}" to recover.`,
     ));
   }
   if (currentState === "COMPACT") {
     return guideError(new Error(
       `Session ${args.sessionId} is in COMPACT state. ` +
       `Call action: "resume" before reporting completion, or run ` +
-      `"claudestory session stop ${args.sessionId}" if the session is stuck.`,
+      `"storybloq session stop ${args.sessionId}" if the session is stuck.`,
     ));
   }
 
@@ -1544,7 +1544,7 @@ async function handleReport(root: string, args: GuideInput): Promise<McpToolResu
   if (state.compactPending && currentState !== "COMPACT") {
     return guideError(new Error(
       `Session has pending compaction in inconsistent state (${currentState}). ` +
-      `Call action: "resume" or run "claudestory session stop ${args.sessionId}".`,
+      `Call action: "resume" or run "storybloq session stop ${args.sessionId}".`,
     ));
   }
 
@@ -1585,7 +1585,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
   if (!info.state.compactPending) {
     return guideError(new Error(
       `Session ${args.sessionId} is in COMPACT state but compactPending is false (stale compact). ` +
-      `Run "claudestory session clear-compact ${args.sessionId}" to recover.`,
+      `Run "storybloq session clear-compact ${args.sessionId}" to recover.`,
     ));
   }
 
@@ -1594,7 +1594,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
   if (!resumeState || !WORKFLOW_STATES.includes(resumeState as typeof WORKFLOW_STATES[number])) {
     return guideError(new Error(
       `Session ${args.sessionId} has invalid preCompactState: ${resumeState}. ` +
-      `Run "claudestory session stop ${args.sessionId}" to terminate.`,
+      `Run "storybloq session stop ${args.sessionId}" to terminate.`,
     ));
   }
 
@@ -1618,7 +1618,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
     });
     return guideError(new Error(
       `Cannot validate git state for session ${args.sessionId}. ` +
-      `Check git status and try "resume" again, or run "claudestory session stop ${args.sessionId}" to end the session.`,
+      `Check git status and try "resume" again, or run "storybloq session stop ${args.sessionId}" to end the session.`,
     ));
   }
 
@@ -1732,7 +1732,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
           candidatesText,
           "",
           topCandidate
-            ? `Pick **${topCandidate.ticket.id}** by calling \`claudestory_autonomous_guide\` now:`
+            ? `Pick **${topCandidate.ticket.id}** by calling \`storybloq_autonomous_guide\` now:`
             : "Pick a ticket now:",
           '```json',
           topCandidate
@@ -1752,7 +1752,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
           "",
           `${driftPreamble}Write a new implementation plan ${ticketInfo}. Save to \`.story/sessions/${driftWritten.sessionId}/plan.md\`.`,
           "",
-          `When done, call \`claudestory_autonomous_guide\` with:`,
+          `When done, call \`storybloq_autonomous_guide\` with:`,
           '```json',
           `{ "sessionId": "${driftWritten.sessionId}", "action": "report", "report": { "completedAction": "plan_written" } }`,
           '```',
@@ -1769,7 +1769,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
           "",
           `${driftPreamble}Re-implement ${ticketInfo}. Previous commit state was invalidated.`,
           "",
-          `When done, call \`claudestory_autonomous_guide\` with:`,
+          `When done, call \`storybloq_autonomous_guide\` with:`,
           '```json',
           `{ "sessionId": "${driftWritten.sessionId}", "action": "report", "report": { "completedAction": "implementation_done" } }`,
           '```',
@@ -1884,7 +1884,7 @@ async function handleResume(root: string, args: GuideInput): Promise<McpToolResu
         candidatesText,
         "",
         topCandidate
-          ? `Pick **${topCandidate.ticket.id}** by calling \`claudestory_autonomous_guide\` now:`
+          ? `Pick **${topCandidate.ticket.id}** by calling \`storybloq_autonomous_guide\` now:`
           : "Pick a ticket now:",
         '```json',
         topCandidate
@@ -2024,7 +2024,7 @@ async function handlePreCompact(root: string, args: GuideInput): Promise<McpTool
       "State flushed. Context compaction will happen automatically via hooks.",
       "If you need to compact manually, run `/compact` now.",
       "",
-      "After compact, call `claudestory_autonomous_guide` with:",
+      "After compact, call `storybloq_autonomous_guide` with:",
       '```json',
       `{ "sessionId": "${result.sessionId}", "action": "resume" }`,
       '```',
@@ -2072,12 +2072,12 @@ async function handleCancel(root: string, args: GuideInput): Promise<McpToolResu
           "Do NOT cancel an autonomous session due to context size.",
           "If you need to manage context, Claude Code handles compaction automatically.",
           "",
-          "Continue working by calling `claudestory_autonomous_guide` with:",
+          "Continue working by calling `storybloq_autonomous_guide` with:",
           '```json',
           `{ "sessionId": "${info.state.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "T-XXX" } }`,
           '```',
           "",
-          "To force-cancel (admin only), run: `claudestory session stop`",
+          "To force-cancel (admin only), run: `storybloq session stop`",
         ].join("\n"),
       }],
     };

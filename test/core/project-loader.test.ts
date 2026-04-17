@@ -88,7 +88,7 @@ async function createTestProject(
     skipTicketsDir?: boolean;
   } = {},
 ): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "claudestory-pl-"));
+  const root = await mkdtemp(join(tmpdir(), "storybloq-pl-"));
   const wrapDir = join(root, ".story");
   await mkdir(wrapDir, { recursive: true });
 
@@ -174,7 +174,7 @@ describe("loadProject", () => {
 
   describe("critical failures", () => {
     it("throws not_found when .story/ dir is missing", async () => {
-      testRoot = await mkdtemp(join(tmpdir(), "claudestory-pl-"));
+      testRoot = await mkdtemp(join(tmpdir(), "storybloq-pl-"));
       await expect(loadProject(testRoot)).rejects.toThrow(
         ProjectLoaderError,
       );
@@ -342,7 +342,7 @@ describe("loadProject", () => {
     it("loads test/fixtures/valid/basic/ correctly", async () => {
       const basicDir = resolve(fixturesDir, "valid", "basic");
       // Create a temp root that points to fixtures
-      testRoot = await mkdtemp(join(tmpdir(), "claudestory-fix-"));
+      testRoot = await mkdtemp(join(tmpdir(), "storybloq-fix-"));
       // Symlink .story to the fixtures basic dir
       // Actually, fixtures/valid/basic IS the .story content, but loadProject expects it at root/.story
       // So we need to set up the structure properly
@@ -650,7 +650,7 @@ describe("guardPath", () => {
     testRoot = await createTestProject();
     const wrapDir = join(testRoot, ".story");
     const ticketsDir = join(wrapDir, "tickets");
-    const outsideDir = await mkdtemp(join(tmpdir(), "claudestory-outside-"));
+    const outsideDir = await mkdtemp(join(tmpdir(), "storybloq-outside-"));
 
     try {
       // Create a real file outside the project

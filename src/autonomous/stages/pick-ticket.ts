@@ -111,10 +111,10 @@ export class PickTicketStage implements WorkflowStage {
         issuesText,
         "",
         topCandidate
-          ? `Pick **${topCandidate.ticket.id}** (highest priority) or an open issue by calling \`claudestory_autonomous_guide\` now:`
+          ? `Pick **${topCandidate.ticket.id}** (highest priority) or an open issue by calling \`storybloq_autonomous_guide\` now:`
           : hasIssues
-            ? `Pick an issue to fix by calling \`claudestory_autonomous_guide\` now:`
-            : "Pick a ticket by calling `claudestory_autonomous_guide` now:",
+            ? `Pick an issue to fix by calling \`storybloq_autonomous_guide\` now:`
+            : "Pick a ticket by calling `storybloq_autonomous_guide` now:",
         '```json',
         topCandidate
           ? `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "ticket_picked", "ticketId": "${topCandidate.ticket.id}" } }`
@@ -196,7 +196,7 @@ export class PickTicketStage implements WorkflowStage {
           "",
           `Write an implementation plan for this ticket. Save it to \`.story/sessions/${ctx.state.sessionId}/plan.md\`.`,
           "",
-          "When done, call `claudestory_autonomous_guide` with:",
+          "When done, call `storybloq_autonomous_guide` with:",
           '```json',
           `{ "sessionId": "${ctx.state.sessionId}", "action": "report", "report": { "completedAction": "plan_written" } }`,
           '```',

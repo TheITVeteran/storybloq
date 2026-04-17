@@ -73,7 +73,7 @@ describe("APNS Silent Push Contract (T-220)", () => {
         aps: { "content-available": 1 },
         ck: {
           ce: 1,
-          cid: "iCloud.com.claudestory.shared",
+          cid: "iCloud.com.storybloq.shared",
           nid: "abc123",
           sid: "project-state-subscription",
           qry: {
@@ -92,7 +92,7 @@ describe("APNS Silent Push Contract (T-220)", () => {
         aps: { "content-available": 1 },
         ck: {
           ce: 2,
-          cid: "iCloud.com.claudestory.shared",
+          cid: "iCloud.com.storybloq.shared",
           nid: "def456",
         },
       };
@@ -110,7 +110,7 @@ describe("APNS Silent Push Contract (T-220)", () => {
     it("rejects payload without content-available (visible push)", () => {
       const payload = {
         aps: { alert: { title: "Hello", body: "World" } },
-        ck: { ce: 1, cid: "iCloud.com.claudestory.shared", nid: "x" },
+        ck: { ce: 1, cid: "iCloud.com.storybloq.shared", nid: "x" },
       };
       expect(isNonCloudKitPayload(payload)).toBe(true);
     });
